@@ -5,7 +5,7 @@ import unicodedata
 
 from aiogram import Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import Message
+from aiogram.types import Message, ReplyParameters
 
 from app.database.repository import Repository
 from app.services.message_filter import should_count
@@ -62,6 +62,9 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
                             business_connection_id=connection_id,
                             text=f"@{me.username} streak:{token}",
                             disable_notification=True,
+                            reply_parameters=ReplyParameters(
+                                message_id=message.message_id,
+                            ),
                         )
                     except TelegramBadRequest as error:
                         await repository.finish_guest_streak_request(token)
