@@ -1,48 +1,90 @@
-# Streak Business Bot — MVP
+# Streak Business Bot
 
-A Telegram Business bot that tracks a daily streak for each private chat. A day completes only after both the Business account owner and the peer have sent at least one human message during the same local day.
+Telegram Business bot that maintains an independent daily streak for each
+`business_connection_id + chat_id`. A day completes only after the Business
+account owner and the peer each send at least one human message during the same
+local day.
 
-## What this MVP does
+## Current features
 
-- Handles Telegram `business_connection` updates and stores the Business owner ID.
-- Handles `business_message` updates in private chats.
-- Counts text, photos, video, voice, video notes, stickers, animation, files, audio, location and contacts.
-- Ignores messages sent by the connected bot itself and offline/automatic Business messages.
-- Requires both sides to send on the same calendar day.
-- Increments only once per day.
-- Resets to 1 after a missed day.
-- Sends a dynamically rendered WEBP sticker through the Business connection.
-- Adds a button containing the current streak number.
-- Uses SQLite with WAL for the first test version.
-- Includes Docker/Railway files.
+- Tracks private Business chats independently.
+- Counts a sender only once per local day.
+- Ignores bot-generated and automatic Business messages.
+- Commits streak completion before attempting to send Telegram media.
+- Prevents duplicate completion with an atomic SQLite transaction.
+- Stores current and longest streak values.
+- Sends reviewed ready-made Jake WEBP stickers for streaks `1–60`.
+- Falls back to the metadata-driven renderer when ready art is unavailable.
+- Adds an inline button formatted as `🔥 N`.
+- Lets either participant send `ستريك` to view current status without counting
+  that query as streak activity.
+- Includes special `warning.webp` and `broken.webp` artwork for upcoming
+  reminder and break-detection features.
 
-## Important test-art note
+## Project status
 
-`assets/jake/pose_flag.png` is a test asset based on the concept approved in the design phase. The renderer replaces the number on the flag with the current streak. The code is intentionally separated from the art so the asset can later be replaced by a final original mascot or additional poses without changing streak logic.
+The ready sticker pack currently covers `1–60`. The target is `1–250`.
+Warning scheduling and broken-streak delivery are not connected yet, so the
+pull request remains a draft until those features and the complete art pack are
+reviewed.
 
 ## Setup
 
-1. Create a bot with `@BotFather`.
-2. Configure the bot for Telegram Business / connected bots as required by Telegram and allow it to reply to messages.
-3. Copy `.env.example` to `.env`.
-4. Put your bot token in `BOT_TOKEN`.
-5. Install dependencies:
+1. Create and configure a Telegram Business bot with `@BotFather`.
+2. Copy `.env.example` to `.env`.
+3. Set `BOT_TOKEN`.
+4. Install and run:
 
    ```bash
    pip install -r requirements.txt
-   ```
-
-6. Run:
-
-   ```bash
    python -m app.main
    ```
 
-7. Connect the bot to the Telegram Business account.
-8. Test in a private chat:
-   - Peer sends one normal message.
-   - Business account owner sends one normal message.
-   - Once both sides have sent during the same Baghdad calendar day, the bot sends the streak sticker into that chat.
+5. Connect the bot to the Telegram Business account.
+6. In a private chat, let the peer and owner each send one normal message. The
+   bot sends the completed streak sticker after both have participated.
+
+## Commands
+
+- `/start` — setup information.
+- `/status` — connection and tracked-chat counts.
+- `ستريك` — current streak, longest streak, and last completed day.
+
+## Streak rules
+
+For local day D:
+
+- Owner only or peer only: no completion.
+- Both participants: exactly one completion.
+- Repeated messages: no additional increment.
+- Previous completion on D-1: increment.
+- Any missed complete day: restart at 1 on the next completed day.
+
+## Sticker assets
+
+Reviewed numbered stickers live at:
+
+```text
+assets/streak_stickers/jake/ready/001.webp
+...
+assets/streak_stickers/jake/ready/060.webp
+```
+
+Special artwork lives under:
+
+```text
+assets/streak_stickers/jake/special/
+  warning.webp
+  broken.webp
+```
+
+Every committed sticker is a transparent `512×512` WebP below Telegram's
+static-sticker size limit. Tests verify numbering, dimensions, format, and
+special asset presence.
+
+The fallback renderer reads pose metadata recursively from `assets/jake/`.
+A new fallback pose requires only a PNG and adjacent JSON metadata file. Ready
+numbered art always takes priority.
 
 ## Docker
 
@@ -51,27 +93,19 @@ docker build -t streak-business-bot .
 docker run --env-file .env streak-business-bot
 ```
 
-## Railway
+## Railway and storage
 
 Set at least:
 
 - `BOT_TOKEN`
 - `TIMEZONE=Asia/Baghdad`
 
-The default SQLite DB is stored at `data/streak.db`. On Railway, SQLite is ephemeral unless you mount a persistent Volume. For long-term deployment, use a Railway Volume or migrate the repository layer to PostgreSQL.
+SQLite defaults to `data/streak.db`. Railway's filesystem is ephemeral unless
+a persistent Volume is mounted. The committed sticker pack does not need a
+Volume; database persistence does.
 
-## Streak rules
+## Privacy
 
-For local day D:
-
-- owner sent + peer did not send => no completion
-- peer sent + owner did not send => no completion
-- both sent => exactly one completion
-- repeated messages => no extra increments
-- if previous completed day was D-1 => `streak += 1`
-- otherwise => `streak = 1`
-
-## Useful bot commands
-
-- `/start` — setup reminder
-- `/status` — active Business connections + number of tracked chats
+The bot does not store message text, photos, videos, or files. It stores only
+connection/chat identifiers, participant identifiers, daily activity dates,
+streak counters, selected pose data, and the last success-message ID.

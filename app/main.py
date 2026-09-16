@@ -11,9 +11,11 @@ from app.database.repository import Repository
 from app.handlers.business import build_router as business_router
 from app.handlers.callbacks import build_router as callbacks_router
 from app.handlers.connection import build_router as connection_router
+from app.handlers.errors import build_router as errors_router
 from app.handlers.private import build_router as private_router
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
+from app.stickers.poses import PoseCatalog
 from app.stickers.renderer import StickerRenderer
 
 
@@ -30,10 +32,17 @@ async def main() -> None:
     bot = Bot(settings.bot_token)
     dp = Dispatcher()
 
-    renderer = StickerRenderer(settings.assets_dir, settings.rendered_dir)
-    streaks = StreakService(repository, settings.timezone)
-    stickers = StickerService(bot, repository, renderer)
+    poses = PoseCatalog(settings.assets_dir)
+    renderer = StickerRenderer(poses, settings.rendered_dir)
+    streaks = StreakService(repository, settings.timezone, poses)
+    stickers = StickerService(
+        bot,
+        repository,
+        renderer,
+        settings.ready_stickers_dir,
+    )
 
+    dp.include_router(errors_router())
     dp.include_router(connection_router(repository))
     dp.include_router(business_router(streaks, stickers))
     dp.include_router(callbacks_router())
