@@ -77,7 +77,7 @@ class StickerService:
         connection_id: str,
         chat_id: int,
         sticker: str | FSInputFile,
-        days: int,
+        days: int | None,
     ) -> Message:
         for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
             try:
@@ -85,7 +85,7 @@ class StickerService:
                     chat_id=chat_id,
                     sticker=sticker,
                     business_connection_id=connection_id,
-                    reply_markup=streak_keyboard(days),
+                    reply_markup=streak_keyboard(days) if days else None,
                 )
             except TelegramRetryAfter as error:
                 if attempt == MAX_SEND_ATTEMPTS:
@@ -96,6 +96,47 @@ class StickerService:
                     raise
                 await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
         raise RuntimeError("unreachable sticker retry state")
+
+    async def send_special(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        name: str,
+    ) -> None:
+        if name not in {"warning", "broken"}:
+            raise ValueError("unknown special sticker")
+        sticker_key = f"special:{name}"
+        cached_file_id = await self.repository.get_sticker_file_id(sticker_key)
+        sent: Message | None = None
+
+        if cached_file_id:
+            try:
+                sent = await self._send_sticker(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    sticker=cached_file_id,
+                    days=None,
+                )
+            except TelegramBadRequest:
+                logger.warning(
+                    "Cached special sticker rejected; uploading: key=%s",
+                    sticker_key,
+                )
+
+        if sent is None:
+            path = self.ready_stickers_dir.parent / "special" / f"{name}.webp"
+            sent = await self._send_sticker(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                sticker=FSInputFile(path),
+                days=None,
+            )
+            if sent.sticker:
+                await self.repository.set_sticker_file_id(
+                    sticker_key,
+                    sent.sticker.file_id,
+                )
 
     async def send_success(
         self,
