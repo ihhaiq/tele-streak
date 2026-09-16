@@ -59,7 +59,8 @@ def build_router(repository: Repository) -> Router:
             f"أعلى تاريخي: {values['highest_ever']}\n"
             f"المحادثات: {values['chats']}\n"
             f"الأيام المكتملة: {values['completed_days']}\n"
-            f"Freezes المستخدمة: {values['freezes_used']}",
+            f"Freezes المستخدمة: {values['freezes_used']}\n"
+            f"أفضل محادثة: {values['best_chat_id'] or 'لا توجد'}",
             reply_markup=dashboard_keyboard(),
         )
         await callback.answer()
