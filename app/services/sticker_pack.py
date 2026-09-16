@@ -57,9 +57,13 @@ class StickerPack:
     def _input(asset: PackAsset) -> InputSticker:
         return InputSticker(sticker=FSInputFile(asset.path), format="static", emoji_list=[asset.emoji])
 
-    async def _resolve_owner(self, connection_id: str) -> int:
+    async def _resolve_owner(self, connection_id: str | None, owner_id: int | None = None) -> int:
+        if owner_id is not None:
+            return owner_id
         if self.owner_id is not None:
             return self.owner_id
+        if not connection_id:
+            raise RuntimeError("sticker pack owner is not configured")
         return (await self.bot.get_business_connection(connection_id)).user.id
 
     async def _retry(self, operation, *args, **kwargs):
@@ -76,7 +80,7 @@ class StickerPack:
                 await asyncio.sleep(min(2 ** (attempt - 1), 8))
         raise RuntimeError("unreachable sticker-pack retry state")
 
-    async def ensure(self, connection_id: str) -> None:
+    async def ensure(self, connection_id: str | None = None, owner_id: int | None = None) -> None:
         if len(self._file_ids) >= 252:
             return
         async with self._lock:
@@ -89,7 +93,7 @@ class StickerPack:
             me = await self.bot.get_me()
             if not me.username:
                 raise RuntimeError("bot must have a username")
-            owner_id = await self._resolve_owner(connection_id)
+            owner_id = await self._resolve_owner(connection_id, owner_id)
 
             for part_index, offset in enumerate(range(0, len(assets), PACK_SIZE), start=1):
                 part = assets[offset:offset + PACK_SIZE]
@@ -139,6 +143,14 @@ class StickerPack:
             name="sticker-pack-sync",
         )
 
+    def start_sync_for_owner(self, owner_id: int) -> None:
+        if self._sync_task is not None and not self._sync_task.done():
+            return
+        self._sync_task = asyncio.create_task(
+            self._sync_for_owner(owner_id),
+            name="sticker-pack-owner-sync",
+        )
+
     async def _sync(self, connection_id: str) -> None:
         try:
             await self.ensure(connection_id)
@@ -146,3 +158,14 @@ class StickerPack:
             raise
         except Exception:
             logger.exception("STICKER_PACK_SYNC_FAILED connection=%s", connection_id)
+
+    async def _sync_for_owner(self, owner_id: int) -> None:
+        try:
+            await self.ensure(owner_id=owner_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("STICKER_PACK_OWNER_SYNC_FAILED owner=%s", owner_id)
+
+    def pack_names(self, bot_username: str) -> list[str]:
+        return [sticker_set_name(bot_username, part) for part in range(1, 4)]
