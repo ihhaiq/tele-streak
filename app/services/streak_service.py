@@ -18,6 +18,13 @@ class Completion:
     pose: str | None = None
 
 
+@dataclass(slots=True)
+class StreakStatus:
+    current: int
+    longest: int
+    last_completed_day: str | None
+
+
 class StreakService:
     def __init__(self, repository: Repository, timezone_name: str, poses: PoseCatalog):
         self.repository = repository
@@ -28,6 +35,22 @@ class StreakService:
     def _days(self) -> tuple[str, str]:
         today_date = datetime.now(self.tz).date()
         return today_date.isoformat(), (today_date - timedelta(days=1)).isoformat()
+
+    async def get_status(self, message: Message) -> StreakStatus | None:
+        connection_id = message.business_connection_id
+        if not connection_id:
+            return None
+        owner_id = await self.repository.get_owner_id(connection_id)
+        if owner_id is None or message.from_user is None:
+            return None
+        record = await self.repository.get_streak(connection_id, message.chat.id)
+        if record is None:
+            return StreakStatus(0, 0, None)
+        return StreakStatus(
+            current=record.current_streak,
+            longest=record.longest_streak,
+            last_completed_day=record.last_completed_day,
+        )
 
     async def register_message(self, message: Message) -> Completion:
         connection_id = message.business_connection_id
