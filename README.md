@@ -47,8 +47,8 @@ The repository includes reviewed ready stickers `1–60` plus a 30-pose positive
 Optional settings:
 
 - `MESSAGE_EFFECT_ID` — fire effect ID; leave empty to disable effects.
-- `STICKER_SET_OWNER_ID` — explicit pack owner. If empty, the first connected
-  Business account becomes the owner.
+- `STICKER_SET_OWNER_ID` — required numeric developer Telegram ID. The three
+  packs are global and shared by all bot users; ownership never follows users.
 - `STICKER_SET_TITLE` — visible Telegram sticker-set title.
 
 ## Commands
