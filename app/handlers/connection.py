@@ -6,7 +6,7 @@ from aiogram.types import BusinessConnection
 from app.database.repository import Repository
 
 
-def build_router(repository: Repository) -> Router:
+def build_router(repository: Repository, streaks=None) -> Router:
     router = Router(name="business_connection")
 
     @router.business_connection()
@@ -17,5 +17,7 @@ def build_router(repository: Repository) -> Router:
             user_chat_id=connection.user_chat_id,
             is_enabled=connection.is_enabled,
         )
+        if streaks is not None:
+            streaks.forget_owner(connection.id)
 
     return router
