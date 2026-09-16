@@ -28,10 +28,10 @@ def build_router(repository: Repository, stickers: StickerService | None = None)
             return
         stats = await repository.dashboard_stats(message.from_user.id)
         await message.answer(
-            "🔥 لوحة Streak\n\n"
-            f"اتصالات Business النشطة: {stats['connections']}\n"
+            "🔥 لوحة الستريك\n\n"
+            f"اتصالات الأعمال النشطة: {stats['connections']}\n"
             f"المحادثات المتتبعة: {stats['chats']}\n"
-            f"أعلى Streak حالي: {stats['highest_current']}",
+            f"أعلى ستريك حالي: {stats['highest_current']}",
             reply_markup=dashboard_keyboard(),
         )
 
@@ -43,10 +43,10 @@ def build_router(repository: Repository, stickers: StickerService | None = None)
         await message.answer(
             "📊 الإحصائيات\n\n"
             f"أعلى Streak حالي: {stats['highest_current']}\n"
-            f"أعلى Streak بالتاريخ: {stats['highest_ever']}\n"
+            f"أعلى ستريك بالتاريخ: {stats['highest_ever']}\n"
             f"المحادثات النشطة: {stats['chats']}\n"
             f"الأيام المكتملة: {stats['completed_days']}\n"
-            f"مرات استخدام Freeze: {stats['freezes_used']}",
+            f"مرات استخدام الحماية: {stats['freezes_used']}",
             reply_markup=dashboard_keyboard(),
         )
 
