@@ -199,3 +199,33 @@ def test_timezone_and_chat_controls(tmp_path):
         await database.close()
 
     asyncio.run(scenario())
+
+
+
+def test_guest_streak_request_is_one_time(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "test.db")
+        await database.init()
+        repository = Repository(database)
+        await repository.upsert_connection("bc-guest", 10, None, True)
+
+        token = await repository.create_guest_streak_request(
+            "bc-guest",
+            20,
+            ttl_seconds=120,
+        )
+        assert token
+        await repository.set_guest_streak_summon_message(token, 99)
+
+        request = await repository.consume_guest_streak_request(token)
+        assert request is not None
+        assert request.business_connection_id == "bc-guest"
+        assert request.chat_id == 20
+        assert request.summon_message_id == 99
+
+        duplicate = await repository.consume_guest_streak_request(token)
+        assert duplicate is None
+
+        await database.close()
+
+    asyncio.run(scenario())

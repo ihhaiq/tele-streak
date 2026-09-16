@@ -15,6 +15,7 @@ from app.handlers.business import build_router as business_router
 from app.handlers.callbacks import build_router as callbacks_router
 from app.handlers.connection import build_router as connection_router
 from app.handlers.errors import build_router as errors_router
+from app.handlers.guest import build_router as guest_router
 from app.handlers.private import build_router as private_router
 from app.services.scheduler import StreakScheduler
 from app.services.sticker_service import StickerService
@@ -56,7 +57,8 @@ async def main() -> None:
 
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
-    dp.include_router(business_router(streaks, stickers))
+    dp.include_router(business_router(streaks, stickers, repository))
+    dp.include_router(guest_router(repository))
     dp.include_router(callbacks_router(repository))
     dp.include_router(private_router(repository, stickers))
 
@@ -67,7 +69,12 @@ async def main() -> None:
     )
 
     me = await bot.get_me()
-    logging.getLogger(__name__).info("Started @%s (%s)", me.username, me.id)
+    logging.getLogger(__name__).info(
+        "Started @%s (%s) guest_mode=%s",
+        me.username,
+        me.id,
+        bool(me.supports_guest_queries),
+    )
     try:
         await dp.start_polling(
             bot,

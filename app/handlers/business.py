@@ -4,8 +4,10 @@ import logging
 import unicodedata
 
 from aiogram import Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
+from app.database.repository import Repository
 from app.services.message_filter import should_count
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
@@ -26,7 +28,7 @@ def is_streak_query(text: str | None) -> bool:
     return first in {"ستريك", "/ستريك", "streak", "/streak"}
 
 
-def build_router(streaks: StreakService, stickers: StickerService) -> Router:
+def build_router(streaks: StreakService, stickers: StickerService, repository: Repository) -> Router:
     router = Router(name="business_messages")
 
     @router.business_message()
@@ -39,9 +41,49 @@ def build_router(streaks: StreakService, stickers: StickerService) -> Router:
                 message.message_id,
             )
             status = await streaks.get_status(message)
-            if status is not None and message.business_connection_id:
+            connection_id = message.business_connection_id
+            if status is not None and connection_id:
+                me = await message.bot.get_me()
+                if me.username and bool(me.supports_guest_queries):
+                    token = await repository.create_guest_streak_request(
+                        connection_id,
+                        message.chat.id,
+                    )
+                    try:
+                        summon = await message.bot.send_message(
+                            chat_id=message.chat.id,
+                            business_connection_id=connection_id,
+                            text=f"@{me.username} streak:{token}",
+                            disable_notification=True,
+                        )
+                    except TelegramBadRequest as error:
+                        logger.warning(
+                            "GUEST_SELF_INVOKE_SEND_REJECTED connection=%s chat=%s error=%s",
+                            connection_id,
+                            message.chat.id,
+                            error,
+                        )
+                    else:
+                        await repository.set_guest_streak_summon_message(
+                            token,
+                            summon.message_id,
+                        )
+                        logger.info(
+                            "GUEST_SELF_INVOKE_SENT connection=%s chat=%s message=%s",
+                            connection_id,
+                            message.chat.id,
+                            summon.message_id,
+                        )
+                        return
+
+                logger.warning(
+                    "GUEST_MODE_UNAVAILABLE_OR_REJECTED connection=%s chat=%s supports_guest=%s",
+                    connection_id,
+                    message.chat.id,
+                    bool(me.supports_guest_queries),
+                )
                 await stickers.send_status(
-                    connection_id=message.business_connection_id,
+                    connection_id=connection_id,
                     chat_id=message.chat.id,
                     current=status.current,
                     longest=status.longest,
@@ -50,14 +92,14 @@ def build_router(streaks: StreakService, stickers: StickerService) -> Router:
                     freeze_count=status.freeze_count,
                     last_completed_day=status.last_completed_day,
                 )
-            elif message.business_connection_id:
+            elif connection_id:
                 logger.warning(
                     "STREAK_COMMAND_STATUS_UNAVAILABLE connection=%s chat=%s",
-                    message.business_connection_id,
+                    connection_id,
                     message.chat.id,
                 )
                 await stickers.send_notice_text(
-                    connection_id=message.business_connection_id,
+                    connection_id=connection_id,
                     chat_id=message.chat.id,
                     text="تعذر قراءة الستريك مؤقتًا. تأكد أن اتصال Business مفعّل ثم حاول مجددًا.",
                 )

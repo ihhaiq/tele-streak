@@ -74,6 +74,22 @@ CREATE TABLE IF NOT EXISTS freeze_history (
     used_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS guest_streak_requests (
+    token TEXT PRIMARY KEY,
+    business_connection_id TEXT NOT NULL,
+    chat_id INTEGER NOT NULL,
+    summon_message_id INTEGER,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    FOREIGN KEY (business_connection_id)
+        REFERENCES business_connections(business_connection_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_guest_streak_requests_expiry
+ON guest_streak_requests(expires_at);
+
 CREATE INDEX IF NOT EXISTS idx_streaks_peer
 ON streaks(peer_user_id);
 

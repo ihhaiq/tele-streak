@@ -12,10 +12,11 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
     TelegramServerError,
 )
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InputRichMessage, Message
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, Message
 
 from app.database.repository import Repository
 from app.keyboards.streak import revive_streak_keyboard, streak_keyboard
+from app.services.rich_status import build_streak_rich_message
 from app.services.sticker_pack import StickerPack
 
 logger = logging.getLogger(__name__)
@@ -92,20 +93,13 @@ class StickerService:
         last_completed_day: str | None,
     ) -> None:
         last_day = last_completed_day or "لا يوجد"
-        rich_message = InputRichMessage(
-            html=(
-                "<h3>🔥 حالة الستريك</h3>"
-                "<details><summary>تفاصيل الستريك 🫠</summary>"
-                "<p>"
-                f"الستريك الحالي: <b>{current}</b><br/>"
-                f"أطول ستريك: <b>{longest}</b><br/>"
-                f"إجمالي أيام الستريك: <b>{completed_days}</b><br/>"
-                f"عدد مرات انقطاع الستريك: <b>{break_count}</b><br/>"
-                f"رصيد الحماية: <b>{freeze_count} 🧊</b><br/>"
-                f"آخر يوم تم احتسابه ضمن الستريك: <b>{last_day}</b>"
-                "</p></details>"
-            ),
-            is_rtl=True,
+        rich_message = build_streak_rich_message(
+            current=current,
+            longest=longest,
+            completed_days=completed_days,
+            break_count=break_count,
+            freeze_count=freeze_count,
+            last_completed_day=last_completed_day,
         )
         kwargs = dict(
             chat_id=chat_id,

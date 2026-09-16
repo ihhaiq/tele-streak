@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import secrets
 
 from .engine import Database
 
@@ -45,6 +46,14 @@ class ReviveResult:
     status: str
     streak: int = 0
     freeze_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class GuestStreakRequest:
+    token: str
+    business_connection_id: str
+    chat_id: int
+    summon_message_id: int | None
 
 
 class Repository:
@@ -149,6 +158,85 @@ class Repository:
             )
             row = await cursor.fetchone()
             return self._streak_from_row(row) if row else None
+
+    async def create_guest_streak_request(
+        self,
+        connection_id: str,
+        chat_id: int,
+        *,
+        ttl_seconds: int = 120,
+    ) -> str:
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
+        expires_at = (now_dt + timedelta(seconds=ttl_seconds)).isoformat()
+        token = secrets.token_urlsafe(9)
+        async with self.database.connect() as db:
+            await db.execute(
+                "DELETE FROM guest_streak_requests WHERE expires_at <= ? OR used_at IS NOT NULL",
+                (now,),
+            )
+            await db.execute(
+                """
+                INSERT INTO guest_streak_requests(
+                    token, business_connection_id, chat_id,
+                    created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (token, connection_id, chat_id, now, expires_at),
+            )
+            await db.commit()
+        return token
+
+    async def set_guest_streak_summon_message(
+        self,
+        token: str,
+        message_id: int,
+    ) -> None:
+        async with self.database.connect() as db:
+            await db.execute(
+                """
+                UPDATE guest_streak_requests
+                SET summon_message_id=?
+                WHERE token=? AND used_at IS NULL
+                """,
+                (message_id, token),
+            )
+            await db.commit()
+
+    async def consume_guest_streak_request(
+        self,
+        token: str,
+    ) -> GuestStreakRequest | None:
+        now = self._now()
+        async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                SELECT token, business_connection_id, chat_id, summon_message_id
+                FROM guest_streak_requests
+                WHERE token=? AND used_at IS NULL AND expires_at>?
+                """,
+                (token, now),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                await db.rollback()
+                return None
+            await db.execute(
+                "UPDATE guest_streak_requests SET used_at=? WHERE token=?",
+                (now, token),
+            )
+            await db.commit()
+            return GuestStreakRequest(
+                token=str(row["token"]),
+                business_connection_id=str(row["business_connection_id"]),
+                chat_id=int(row["chat_id"]),
+                summon_message_id=(
+                    int(row["summon_message_id"])
+                    if row["summon_message_id"] is not None
+                    else None
+                ),
+            )
 
     async def register_activity(
         self,
