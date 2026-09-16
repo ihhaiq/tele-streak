@@ -116,7 +116,7 @@ class StickerService:
         except TelegramBadRequest as error:
             if self.message_effect_id:
                 logger.warning(
-                    "Rich status effect rejected; retrying without effect: %s",
+                    "STREAK_RICH_EFFECT_REJECTED error=%s",
                     error,
                 )
                 try:
@@ -129,7 +129,7 @@ class StickerService:
                     )
             else:
                 logger.warning(
-                    "Rich status rejected; falling back to text: %s",
+                    "STREAK_RICH_REJECTED error=%s",
                     error,
                 )
 
