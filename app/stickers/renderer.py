@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from PIL import Image, ImageColor, ImageDraw, ImageFont
@@ -27,6 +28,22 @@ class StickerRenderer:
             except OSError:
                 pass
         return ImageFont.load_default()
+
+    def prewarm(self, through_day: int = 250) -> int:
+        """Generate the reusable local sticker pack once; existing files are cache hits."""
+        manifest_path = self.rendered_dir / "pack_1_250.json"
+        manifest: dict[str, str] = {}
+        last_pose: str | None = None
+        for days in range(1, through_day + 1):
+            pose = self.catalog.choose(days, last_pose)
+            self.render(pose.id, days)
+            manifest[str(days)] = pose.id
+            last_pose = pose.id
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return len(manifest)
 
     def render(self, pose_id: str, days: int) -> Path:
         pose = self.catalog.get(pose_id)
