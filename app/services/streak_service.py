@@ -44,8 +44,10 @@ class StreakService:
             asyncio.Lock
         )
 
-    def _days(self) -> tuple[str, str]:
-        today_date = datetime.now(self.tz).date()
+    async def _days(self, connection_id: str) -> tuple[str, str]:
+        timezone_name = await self.repository.get_connection_timezone(connection_id)
+        timezone = ZoneInfo(timezone_name) if timezone_name else self.tz
+        today_date = datetime.now(timezone).date()
         yesterday = today_date - timedelta(days=1)
         return today_date.isoformat(), yesterday.isoformat()
 
@@ -85,7 +87,7 @@ class StreakService:
             sender_id = message.from_user.id
             role = "owner" if sender_id == owner_id else "peer"
             peer_id = None if role == "owner" else sender_id
-            today, yesterday = self._days()
+            today, yesterday = await self._days(connection_id)
 
             result = await self.repository.register_activity(
                 connection_id=connection_id,

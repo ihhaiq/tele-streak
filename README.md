@@ -13,7 +13,9 @@ local day.
 - Commits streak completion before attempting to send Telegram media.
 - Prevents duplicate completion with an atomic SQLite transaction.
 - Stores current and longest streak values.
-- Sends reviewed ready-made Jake WEBP stickers for streaks `1–60`.
+- Sends Jake WEBP stickers for streaks `1–250` from three Telegram packs.
+- Creates and synchronizes a real Telegram sticker set on first streak use.
+- Adds Telegram's animated fire effect to streak status and success messages.
 - Falls back to the metadata-driven renderer when ready art is unavailable.
 - Adds an inline button formatted as `🔥 N`.
 - Lets either participant send `ستريك` to view current status without counting
@@ -23,10 +25,7 @@ local day.
 
 ## Project status
 
-The ready sticker pack currently covers `1–60`. The target is `1–250`.
-Warning scheduling and broken-streak delivery are not connected yet, so the
-pull request remains a draft until those features and the complete art pack are
-reviewed.
+The repository includes reviewed ready stickers `1–60` plus a 30-pose positive-expression sprite source. On first use, the bot builds missing `61–250` WebP files once and synchronizes three Telegram packs (Telegram allows 120 stickers per pack). Warning and broken-streak stickers are included in the third pack. Upload progress is inferred from each pack's current size, so a restart resumes instead of starting over.
 
 ## Setup
 
@@ -42,7 +41,15 @@ reviewed.
 
 5. Connect the bot to the Telegram Business account.
 6. In a private chat, let the peer and owner each send one normal message. The
-   bot sends the completed streak sticker after both have participated.
+   bot creates/synchronizes the sticker set on first use, then sends its numbered
+   sticker after both have participated.
+
+Optional settings:
+
+- `MESSAGE_EFFECT_ID` — fire effect ID; leave empty to disable effects.
+- `STICKER_SET_OWNER_ID` — explicit pack owner. If empty, the first connected
+  Business account becomes the owner.
+- `STICKER_SET_TITLE` — visible Telegram sticker-set title.
 
 ## Commands
 
@@ -67,7 +74,7 @@ Reviewed numbered stickers live at:
 ```text
 assets/streak_stickers/jake/ready/001.webp
 ...
-assets/streak_stickers/jake/ready/060.webp
+assets/streak_stickers/jake/ready/250.webp
 ```
 
 Special artwork lives under:
@@ -109,3 +116,11 @@ Volume; database persistence does.
 The bot does not store message text, photos, videos, or files. It stores only
 connection/chat identifiers, participant identifiers, daily activity dates,
 streak counters, selected pose data, and the last success-message ID.
+
+
+## Dashboard and settings
+
+The private `/start` dashboard shows Business connection status, active chats,
+current/highest streaks, completed days, Freeze usage, and the best streak chat.
+It also supports timezone selection and per-chat enable/disable, reset,
+notification mute, and automatic-Freeze controls.

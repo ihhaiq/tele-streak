@@ -25,6 +25,9 @@ def build_router(streaks: StreakService, stickers: StickerService) -> Router:
                     chat_id=message.chat.id,
                     current=status.current,
                     longest=status.longest,
+                    completed_days=status.completed_days,
+                    break_count=status.break_count,
+                    freeze_count=status.freeze_count,
                     last_completed_day=status.last_completed_day,
                 )
             return

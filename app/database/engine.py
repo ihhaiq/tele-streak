@@ -34,8 +34,11 @@ CREATE TABLE IF NOT EXISTS streaks (
     last_pose TEXT,
     last_success_message_id INTEGER,
     last_warning_day TEXT,
+    last_broken_day TEXT,
     notifications_enabled INTEGER NOT NULL DEFAULT 1,
+    is_enabled INTEGER NOT NULL DEFAULT 1,
     freeze_count INTEGER NOT NULL DEFAULT 0,
+    auto_freeze INTEGER NOT NULL DEFAULT 1,
     freezes_used INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -89,8 +92,11 @@ MIGRATIONS = (
     "ALTER TABLE streaks ADD COLUMN completed_days INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN break_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN last_warning_day TEXT",
+    "ALTER TABLE streaks ADD COLUMN last_broken_day TEXT",
     "ALTER TABLE streaks ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE streaks ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE streaks ADD COLUMN freeze_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE streaks ADD COLUMN auto_freeze INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE streaks ADD COLUMN freezes_used INTEGER NOT NULL DEFAULT 0",
 )
 

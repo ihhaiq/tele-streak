@@ -22,8 +22,11 @@ class StreakRecord:
     last_pose: str | None
     last_success_message_id: int | None
     last_warning_day: str | None
+    last_broken_day: str | None
     notifications_enabled: bool
+    is_enabled: bool
     freeze_count: int
+    auto_freeze: bool
     freezes_used: int
     created_at: str
     updated_at: str
@@ -69,8 +72,11 @@ class Repository:
                 else None
             ),
             last_warning_day=row["last_warning_day"],
+            last_broken_day=row["last_broken_day"],
             notifications_enabled=bool(row["notifications_enabled"]),
+            is_enabled=bool(row["is_enabled"]),
             freeze_count=int(row["freeze_count"]),
+            auto_freeze=bool(row["auto_freeze"]),
             freezes_used=int(row["freezes_used"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
@@ -201,7 +207,7 @@ class Repository:
                 """
                 SELECT current_streak, longest_streak, completed_days,
                        break_count, last_completed_day, owner_sent_day,
-                       peer_sent_day, last_pose
+                       peer_sent_day, last_pose, is_enabled
                 FROM streaks
                 WHERE business_connection_id=? AND chat_id=?
                 """,
@@ -209,6 +215,9 @@ class Repository:
             )
             row = await cursor.fetchone()
             assert row is not None
+            if not bool(row["is_enabled"]):
+                await db.commit()
+                return ActivityResult(False, False, int(row["current_streak"]), None)
 
             already_completed = row["last_completed_day"] == today
             both_sent = (
@@ -229,7 +238,9 @@ class Repository:
                 int(row["current_streak"]) + 1 if consecutive else 1
             )
             was_broken = (
-                row["last_completed_day"] is not None and not consecutive
+                row["last_completed_day"] is not None
+                and not consecutive
+                and int(row["current_streak"]) > 0
             )
             break_count = int(row["break_count"]) + int(was_broken)
             completed_days = int(row["completed_days"]) + 1
@@ -243,6 +254,10 @@ class Repository:
                     longest_streak=?,
                     completed_days=?,
                     break_count=?,
+                    freeze_count=CASE
+                        WHEN ? % 30 = 0 THEN MIN(freeze_count + 1, 3)
+                        ELSE freeze_count
+                    END,
                     last_completed_day=?,
                     last_pose=?,
                     updated_at=?
@@ -253,6 +268,7 @@ class Repository:
                     longest,
                     completed_days,
                     break_count,
+                    completed_days,
                     today,
                     pose_id,
                     now,
@@ -322,6 +338,258 @@ class Repository:
             )
             await db.commit()
             return cursor.rowcount
+
+
+    async def list_monitorable_streaks(
+        self,
+    ) -> list[tuple[StreakRecord, str]]:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT s.*, b.timezone
+                FROM streaks AS s
+                JOIN business_connections AS b
+                  ON b.business_connection_id=s.business_connection_id
+                WHERE b.is_enabled=1
+                  AND s.notifications_enabled=1
+                  AND s.is_enabled=1
+                  AND s.current_streak > 0
+                """
+            )
+            rows = await cursor.fetchall()
+            return [
+                (self._streak_from_row(row), str(row["timezone"]))
+                for row in rows
+            ]
+
+    async def claim_warning(
+        self,
+        connection_id: str,
+        chat_id: int,
+        day: str,
+    ) -> bool:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                UPDATE streaks
+                SET last_warning_day=?, updated_at=?
+                WHERE business_connection_id=? AND chat_id=?
+                  AND COALESCE(last_warning_day, '') <> ?
+                """,
+                (day, self._now(), connection_id, chat_id, day),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
+
+    async def process_missed_day(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        today: str,
+        missed_day: str,
+        day_before_missed: str,
+    ) -> str | None:
+        now = self._now()
+        async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                SELECT current_streak, last_completed_day, last_broken_day,
+                       freeze_count, freezes_used, auto_freeze
+                FROM streaks
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (connection_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            if (
+                row is None
+                or int(row["current_streak"]) <= 0
+                or row["last_broken_day"] == today
+                or row["last_completed_day"] == missed_day
+            ):
+                await db.rollback()
+                return None
+
+            can_freeze = (
+                bool(row["auto_freeze"])
+                and int(row["freeze_count"]) > 0
+                and row["last_completed_day"] == day_before_missed
+            )
+            if can_freeze:
+                await db.execute(
+                    """
+                    UPDATE streaks SET
+                        freeze_count=freeze_count-1,
+                        freezes_used=freezes_used+1,
+                        last_completed_day=?,
+                        updated_at=?
+                    WHERE business_connection_id=? AND chat_id=?
+                    """,
+                    (missed_day, now, connection_id, chat_id),
+                )
+                await db.execute(
+                    """
+                    INSERT INTO freeze_history(
+                        business_connection_id, chat_id, protected_day, used_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (connection_id, chat_id, missed_day, now),
+                )
+                await db.commit()
+                return "frozen"
+
+            await db.execute(
+                """
+                UPDATE streaks SET
+                    current_streak=0,
+                    break_count=break_count+1,
+                    last_broken_day=?,
+                    updated_at=?
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (today, now, connection_id, chat_id),
+            )
+            await db.commit()
+            return "broken"
+
+    async def get_connection_timezone(self, connection_id: str) -> str | None:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                "SELECT timezone FROM business_connections WHERE business_connection_id=? AND is_enabled=1",
+                (connection_id,),
+            )
+            row = await cursor.fetchone()
+            return str(row["timezone"]) if row else None
+
+    async def set_owner_timezone(self, owner_user_id: int, timezone_name: str) -> int:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                "UPDATE business_connections SET timezone=?, updated_at=? WHERE owner_user_id=?",
+                (timezone_name, self._now(), owner_user_id),
+            )
+            await db.commit()
+            return cursor.rowcount
+
+    async def dashboard_stats(self, owner_user_id: int) -> dict[str, int]:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                "SELECT COUNT(*) AS c FROM business_connections WHERE owner_user_id=? AND is_enabled=1",
+                (owner_user_id,),
+            )
+            connections = int((await cursor.fetchone())["c"])
+            cursor = await db.execute(
+                """
+                SELECT COALESCE(SUM(s.is_enabled), 0) AS chats,
+                       COALESCE(MAX(current_streak), 0) AS highest_current,
+                       COALESCE(MAX(longest_streak), 0) AS highest_ever,
+                       COALESCE(SUM(completed_days), 0) AS completed_days,
+                       COALESCE(SUM(freezes_used), 0) AS freezes_used
+                FROM streaks AS s
+                JOIN business_connections AS b
+                  ON b.business_connection_id=s.business_connection_id
+                WHERE b.owner_user_id=? AND b.is_enabled=1
+                """,
+                (owner_user_id,),
+            )
+            row = await cursor.fetchone()
+            best_cursor = await db.execute(
+                """
+                SELECT s.chat_id FROM streaks AS s
+                JOIN business_connections AS b
+                  ON b.business_connection_id=s.business_connection_id
+                WHERE b.owner_user_id=? AND b.is_enabled=1
+                ORDER BY s.longest_streak DESC, s.completed_days DESC LIMIT 1
+                """,
+                (owner_user_id,),
+            )
+            best = await best_cursor.fetchone()
+            return {
+                "connections": connections,
+                "chats": int(row["chats"]),
+                "highest_current": int(row["highest_current"]),
+                "highest_ever": int(row["highest_ever"]),
+                "completed_days": int(row["completed_days"]),
+                "freezes_used": int(row["freezes_used"]),
+                "best_chat_id": int(best["chat_id"]) if best else 0,
+            }
+
+    async def list_owner_streaks(self, owner_user_id: int) -> list[StreakRecord]:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT s.* FROM streaks AS s
+                JOIN business_connections AS b
+                  ON b.business_connection_id=s.business_connection_id
+                WHERE b.owner_user_id=? AND b.is_enabled=1
+                ORDER BY s.current_streak DESC, s.updated_at DESC
+                """,
+                (owner_user_id,),
+            )
+            return [self._streak_from_row(row) for row in await cursor.fetchall()]
+
+    async def get_owner_streak(self, owner_user_id: int, chat_id: int) -> StreakRecord | None:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT s.* FROM streaks AS s
+                JOIN business_connections AS b
+                  ON b.business_connection_id=s.business_connection_id
+                WHERE b.owner_user_id=? AND s.chat_id=? AND b.is_enabled=1
+                LIMIT 1
+                """,
+                (owner_user_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            return self._streak_from_row(row) if row else None
+
+    async def toggle_chat_setting(self, owner_user_id: int, chat_id: int, setting: str) -> bool | None:
+        columns = {"enabled": "is_enabled", "notifications": "notifications_enabled", "auto_freeze": "auto_freeze"}
+        column = columns.get(setting)
+        if column is None:
+            raise ValueError("unknown chat setting")
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                f"""
+                UPDATE streaks SET {column}=1-{column}, updated_at=?
+                WHERE chat_id=? AND business_connection_id IN (
+                    SELECT business_connection_id FROM business_connections WHERE owner_user_id=?
+                )
+                """,
+                (self._now(), chat_id, owner_user_id),
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                return None
+            cursor = await db.execute(
+                f"""
+                SELECT {column} FROM streaks
+                WHERE chat_id=? AND business_connection_id IN (
+                    SELECT business_connection_id FROM business_connections WHERE owner_user_id=?
+                ) LIMIT 1
+                """,
+                (chat_id, owner_user_id),
+            )
+            value = bool((await cursor.fetchone())[column])
+            await db.commit()
+            return value
+
+    async def reset_streak(self, owner_user_id: int, chat_id: int) -> bool:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                UPDATE streaks SET current_streak=0, owner_sent_day=NULL,
+                    peer_sent_day=NULL, last_completed_day=NULL,
+                    last_pose=NULL, updated_at=?
+                WHERE chat_id=? AND business_connection_id IN (
+                    SELECT business_connection_id FROM business_connections WHERE owner_user_id=?
+                )
+                """,
+                (self._now(), chat_id, owner_user_id),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
 
     async def stats(self) -> tuple[int, int]:
         async with self.database.connect() as db:
