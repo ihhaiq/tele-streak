@@ -7,8 +7,8 @@ READY = ROOT / "assets" / "streak_stickers" / "jake" / "ready"
 SPECIAL = ROOT / "assets" / "streak_stickers" / "jake" / "special"
 
 
-def test_ready_sticker_pack_1_through_50_is_complete():
-    expected = [f"{value:03}.webp" for value in range(1, 51)]
+def test_ready_sticker_pack_1_through_60_is_complete():
+    expected = [f"{value:03}.webp" for value in range(1, 61)]
     actual = sorted(path.name for path in READY.glob("*.webp"))
     assert actual == expected
 
