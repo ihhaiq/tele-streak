@@ -217,14 +217,53 @@ def test_guest_streak_request_is_one_time(tmp_path):
         assert token
         await repository.set_guest_streak_summon_message(token, 99)
 
-        request = await repository.consume_guest_streak_request(token)
+        request = await repository.get_guest_streak_request(token)
         assert request is not None
         assert request.business_connection_id == "bc-guest"
         assert request.chat_id == 20
         assert request.summon_message_id == 99
 
-        duplicate = await repository.consume_guest_streak_request(token)
-        assert duplicate is None
+        # Reading the request doesn't consume it before Telegram accepts a reply.
+        again = await repository.get_guest_streak_request(token)
+        assert again is not None
+
+        await repository.finish_guest_streak_request(token)
+        assert await repository.get_guest_streak_request(token) is None
+
+        await database.close()
+
+    asyncio.run(scenario())
+
+
+def test_guest_streak_request_has_short_cooldown(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "test.db")
+        await database.init()
+        repository = Repository(database)
+        await repository.upsert_connection("bc-guest", 10, None, True)
+
+        first = await repository.create_guest_streak_request(
+            "bc-guest",
+            20,
+            cooldown_seconds=3,
+        )
+        assert first is not None
+        assert len(first) <= 12
+
+        second = await repository.create_guest_streak_request(
+            "bc-guest",
+            20,
+            cooldown_seconds=3,
+        )
+        assert second is None
+
+        await repository.finish_guest_streak_request(first)
+        third = await repository.create_guest_streak_request(
+            "bc-guest",
+            20,
+            cooldown_seconds=3,
+        )
+        assert third is not None
 
         await database.close()
 
