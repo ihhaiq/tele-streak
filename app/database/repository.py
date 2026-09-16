@@ -249,6 +249,10 @@ class Repository:
                     longest_streak=?,
                     completed_days=?,
                     break_count=?,
+                    freeze_count=CASE
+                        WHEN ? % 30 = 0 THEN MIN(freeze_count + 1, 3)
+                        ELSE freeze_count
+                    END,
                     last_completed_day=?,
                     last_pose=?,
                     updated_at=?
@@ -259,6 +263,7 @@ class Repository:
                     longest,
                     completed_days,
                     break_count,
+                    completed_days,
                     today,
                     pose_id,
                     now,
