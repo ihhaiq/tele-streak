@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+
 from aiogram import Router
 from aiogram.filters import Command, CommandStart
+from aiogram import F
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.database.repository import Repository
+from app.services.sticker_service import StickerService
 
 
 def dashboard_keyboard() -> InlineKeyboardMarkup:
@@ -15,7 +19,7 @@ def dashboard_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def build_router(repository: Repository) -> Router:
+def build_router(repository: Repository, stickers: StickerService | None = None) -> Router:
     router = Router(name="private_bot")
 
     @router.message(CommandStart())
@@ -42,9 +46,34 @@ def build_router(repository: Repository) -> Router:
             f"أعلى Streak بالتاريخ: {stats['highest_ever']}\n"
             f"المحادثات النشطة: {stats['chats']}\n"
             f"الأيام المكتملة: {stats['completed_days']}\n"
-            f"مرات استخدام Freeze: {stats['freezes_used']}\n"
-            f"أفضل محادثة: {stats['best_chat_id'] or 'لا توجد'}",
+            f"مرات استخدام Freeze: {stats['freezes_used']}",
             reply_markup=dashboard_keyboard(),
         )
+
+    @router.message(Command("pack"))
+    @router.message(F.text.in_({"حزمة", "الحزمة"}))
+    async def create_pack(message: Message) -> None:
+        if stickers is None or message.from_user is None:
+            await message.answer("ميزة الحزمة غير مفعّلة حاليًا.")
+            return
+        owner_id = message.from_user.id
+        await message.answer(
+            "📦 بدأت مزامنة حزمة الستريك باسمك.\n"
+            "سيصلك إشعار عند اكتمال الحزم الثلاث؛ يمكنك إغلاق هذه المحادثة أثناء الرفع."
+        )
+
+        async def sync() -> None:
+            try:
+                await stickers.prepare_pack_for_owner(owner_id)
+                me = await message.bot.get_me()
+                names = stickers.pack.pack_names(me.username or "bot")
+                await message.answer(
+                    "✅ اكتملت حزمة الستريك.\n\n"
+                    + "\n".join(f"https://t.me/addstickers/{name}" for name in names)
+                )
+            except Exception:
+                await message.answer("تعذر إنشاء الحزمة. راجع سجل البوت ثم حاول مرة أخرى.")
+
+        asyncio.create_task(sync(), name=f"pack-command-{owner_id}")
 
     return router
