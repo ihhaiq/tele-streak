@@ -56,7 +56,11 @@ def build_router(repository: Repository, stickers: StickerService | None = None)
         if stickers is None or message.from_user is None:
             await message.answer("ميزة الحزمة غير مفعّلة حاليًا.")
             return
-        owner_id = message.from_user.id
+        configured_owner = stickers.pack.owner_id
+        if configured_owner is None or message.from_user.id != configured_owner:
+            await message.answer("هذا الأمر متاح للمطوّر فقط.")
+            return
+        owner_id = configured_owner
         await message.answer(
             "📦 بدأت مزامنة حزمة الستريك باسمك.\n"
             "سيصلك إشعار عند اكتمال الحزم الثلاث؛ يمكنك إغلاق هذه المحادثة أثناء الرفع."
