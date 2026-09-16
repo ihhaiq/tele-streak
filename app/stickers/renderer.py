@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageColor, ImageDraw, ImageFont
+
+from app.stickers.poses import PoseCatalog
 
 
 class StickerRenderer:
-    def __init__(self, assets_dir: Path, rendered_dir: Path):
-        self.assets_dir = assets_dir
+    def __init__(self, catalog: PoseCatalog, rendered_dir: Path):
+        self.catalog = catalog
         self.rendered_dir = rendered_dir
         self.rendered_dir.mkdir(parents=True, exist_ok=True)
 
@@ -26,50 +28,52 @@ class StickerRenderer:
                 pass
         return ImageFont.load_default()
 
-    def render(self, pose_name: str, days: int) -> Path:
-        key = hashlib.sha1(f"{pose_name}:{days}:v2".encode()).hexdigest()[:16]
-        output = self.rendered_dir / f"streak_{days}_{key}.webp"
+    def render(self, pose_id: str, days: int) -> Path:
+        pose = self.catalog.get(pose_id)
+        source_fingerprint = f"{pose.image.stat().st_mtime_ns}:{pose.image.stat().st_size}"
+        key = hashlib.sha1(f"{pose_id}:{days}:{source_fingerprint}:v3".encode()).hexdigest()[:16]
+        output = self.rendered_dir / f"streak_{days}_{pose_id}_{key}.webp"
         if output.exists():
             return output
 
-        source = self.assets_dir / pose_name
-        image = Image.open(source).convert("RGBA")
-
-        # The test art has Jake holding a flag. Replace only the flag number.
-        # Coordinates are relative, so the asset can be resized/re-exported later.
-        draw = ImageDraw.Draw(image)
+        image = Image.open(pose.image).convert("RGBA")
         w, h = image.size
-        box = (
-            int(w * 0.19),
-            int(h * 0.075),
-            int(w * 0.76),
-            int(h * 0.285),
-        )
-        draw.rounded_rectangle(box, radius=max(4, int(w * 0.025)), fill=(255, 248, 232, 255))
-
+        left, top, right, bottom = pose.number_box
+        box = (int(w * left), int(h * top), int(w * right), int(h * bottom))
         text = str(days)
-        max_width = box[2] - box[0] - 10
-        max_height = box[3] - box[1] - 6
-        size = max(18, int(h * 0.17))
-        while size > 18:
+        if len(text) > pose.max_digits:
+            raise ValueError(f"Pose {pose.id} supports at most {pose.max_digits} digits")
+
+        layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
+        max_width = box[2] - box[0]
+        max_height = box[3] - box[1]
+        size = max(12, pose.font_size)
+        while size > 12:
             font = self._font(size)
-            bounds = draw.textbbox((0, 0), text, font=font, stroke_width=0)
-            tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
-            if tw <= max_width and th <= max_height:
+            bounds = draw.textbbox((0, 0), text, font=font, stroke_width=pose.outline_width)
+            if bounds[2] - bounds[0] <= max_width and bounds[3] - bounds[1] <= max_height:
                 break
             size -= 2
-        font = self._font(size)
-        bounds = draw.textbbox((0, 0), text, font=font)
-        tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
-        x = box[0] + ((box[2] - box[0]) - tw) / 2
-        y = box[1] + ((box[3] - box[1]) - th) / 2 - bounds[1]
-        draw.text((x, y), text, font=font, fill=(23, 43, 58, 255))
 
-        # Telegram static stickers: one side exactly 512 px, both sides <=512.
+        font = self._font(size)
+        bounds = draw.textbbox((0, 0), text, font=font, stroke_width=pose.outline_width)
+        x = box[0] + (max_width - (bounds[2] - bounds[0])) / 2 - bounds[0]
+        y = box[1] + (max_height - (bounds[3] - bounds[1])) / 2 - bounds[1]
+        draw.text(
+            (x, y),
+            text,
+            font=font,
+            fill=ImageColor.getcolor(pose.text_color, "RGBA"),
+            stroke_width=pose.outline_width,
+            stroke_fill=ImageColor.getcolor(pose.outline_color, "RGBA"),
+        )
+        if pose.rotation:
+            layer = layer.rotate(pose.rotation, resample=Image.Resampling.BICUBIC, center=((box[0]+box[2])/2, (box[1]+box[3])/2))
+        image.alpha_composite(layer)
+
         image.thumbnail((512, 512), Image.Resampling.LANCZOS)
         canvas = Image.new("RGBA", (512, 512), (255, 255, 255, 0))
-        x = (512 - image.width) // 2
-        y = (512 - image.height) // 2
-        canvas.alpha_composite(image, (x, y))
-        canvas.save(output, "WEBP", quality=95, method=6)
+        canvas.alpha_composite(image, ((512 - image.width) // 2, (512 - image.height) // 2))
+        canvas.save(output, "WEBP", quality=92, method=6)
         return output
