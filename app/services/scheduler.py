@@ -106,6 +106,7 @@ class StreakScheduler:
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
                         name="broken",
+                        revive_available=streak.freeze_count > 0,
                     )
                     logger.info(
                         "STREAK_BROKEN connection=%s chat=%s",
@@ -114,7 +115,7 @@ class StreakScheduler:
                     )
                 elif result == "frozen":
                     logger.info(
-                        "FREEZE_USED connection=%s chat=%s day=%s",
+                        "STREAK_PROTECTION_USED connection=%s chat=%s day=%s",
                         streak.business_connection_id,
                         streak.chat_id,
                         yesterday,

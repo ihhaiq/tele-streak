@@ -60,3 +60,36 @@ def test_scheduler_sends_one_warning_with_missing_role():
     assert repository.claimed
     assert stickers.special[0]["name"] == "warning"
     assert "الطرف الثاني" in stickers.notices[0]["text"]
+
+
+
+def test_broken_streak_hides_revival_without_protection():
+    class BrokenRepository(FakeRepository):
+        async def process_missed_day(self, **kwargs):
+            return "broken"
+
+    today = datetime.now(timezone.utc).date()
+    day_before_yesterday = (today - timedelta(days=2)).isoformat()
+    streak = StreakRecord(
+        business_connection_id="bc-1", chat_id=20, peer_user_id=30,
+        current_streak=5, longest_streak=5, completed_days=5,
+        break_count=0, last_completed_day=day_before_yesterday,
+        owner_sent_day=None, peer_sent_day=None,
+        last_pose="pose", last_success_message_id=None,
+        last_warning_day=None, last_broken_day=None,
+        notifications_enabled=True, is_enabled=True,
+        freeze_count=0, auto_freeze=False, freezes_used=0,
+        created_at="2026-09-01", updated_at="2026-09-16",
+    )
+    repository = BrokenRepository(streak)
+    stickers = FakeStickers()
+    scheduler = StreakScheduler(repository, stickers, warning_hour=24)
+
+    asyncio.run(scheduler.run_once())
+
+    assert stickers.special == [{
+        "connection_id": "bc-1",
+        "chat_id": 20,
+        "name": "broken",
+        "revive_available": False,
+    }]

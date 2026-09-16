@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from contextlib import suppress
-
 from aiogram import Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import (
@@ -14,7 +12,7 @@ from aiogram.types import (
 )
 
 from app.database.repository import Repository
-from app.services.rich_status import build_streak_rich_message
+from app.services.rich_status import build_streak_fallback_text, build_streak_rich_message
 
 logger = logging.getLogger(__name__)
 TOKEN_RE = re.compile(r"(?:^|\s)streak:([A-Za-z0-9_-]{8,32})(?:\s|$)")
@@ -36,25 +34,34 @@ def build_router(repository: Repository) -> Router:
         if token is None or message.guest_query_id is None:
             return
 
-        request = await repository.consume_guest_streak_request(token)
+        request = await repository.get_guest_streak_request(token)
         if request is None:
             logger.warning(
-                "GUEST_STREAK_REQUEST_INVALID chat=%s",
+                "STREAK_GUEST_REQUEST_INVALID chat=%s",
                 message.chat.id,
             )
             return
 
+        logger.info(
+            "STREAK_GUEST_RECEIVED connection=%s chat=%s guest_chat=%s",
+            request.business_connection_id,
+            request.chat_id,
+            message.chat.id,
+        )
         streak = await repository.get_streak(
             request.business_connection_id,
             request.chat_id,
         )
         if streak is None:
             logger.warning(
-                "GUEST_STREAK_RECORD_MISSING connection=%s chat=%s",
+                "STREAK_GUEST_RECORD_MISSING connection=%s chat=%s",
                 request.business_connection_id,
                 request.chat_id,
             )
             return
+        timezone_name = await repository.get_connection_timezone(
+            request.business_connection_id
+        )
 
         rich_message = build_streak_rich_message(
             current=streak.current_streak,
@@ -63,6 +70,7 @@ def build_router(repository: Repository) -> Router:
             break_count=streak.break_count,
             freeze_count=streak.freeze_count,
             last_completed_day=streak.last_completed_day,
+            timezone_name=timezone_name,
         )
         result = InlineQueryResultArticle(
             id=f"streak-{token}",
@@ -75,7 +83,7 @@ def build_router(repository: Repository) -> Router:
             await message.answer_guest_query(result)
         except TelegramBadRequest as error:
             logger.warning(
-                "GUEST_STREAK_RICH_REJECTED connection=%s chat=%s error=%s",
+                "STREAK_GUEST_RICH_REJECTED connection=%s chat=%s error=%s",
                 request.business_connection_id,
                 request.chat_id,
                 error,
@@ -84,32 +92,51 @@ def build_router(repository: Repository) -> Router:
                 id=f"streak-text-{token}",
                 title="حالة الستريك",
                 input_message_content=InputTextMessageContent(
-                    message_text=(
-                        "🔥 حالة الستريك\n\n"
-                        f"الستريك الحالي: {streak.current_streak}\n"
-                        f"أطول ستريك: {streak.longest_streak}\n"
-                        f"إجمالي أيام الستريك: {streak.completed_days}\n"
-                        f"عدد مرات انقطاع الستريك: {streak.break_count}\n"
-                        f"رصيد الحماية: {streak.freeze_count} 🧊\n"
-                        "آخر يوم تم احتسابه ضمن الستريك: "
-                        f"{streak.last_completed_day or 'لا يوجد'}"
+                    message_text=build_streak_fallback_text(
+                        current=streak.current_streak,
+                        longest=streak.longest_streak,
+                        completed_days=streak.completed_days,
+                        break_count=streak.break_count,
+                        freeze_count=streak.freeze_count,
+                        last_completed_day=streak.last_completed_day,
+                        timezone_name=timezone_name,
                     ),
                 ),
             )
             await message.answer_guest_query(fallback)
+            logger.info(
+                "STREAK_GUEST_TEXT_SENT connection=%s chat=%s",
+                request.business_connection_id,
+                request.chat_id,
+            )
         else:
             logger.info(
-                "GUEST_STREAK_RICH_SENT connection=%s chat=%s guest_chat=%s",
+                "STREAK_GUEST_RICH_SENT connection=%s chat=%s guest_chat=%s",
                 request.business_connection_id,
                 request.chat_id,
                 message.chat.id,
             )
 
+        await repository.finish_guest_streak_request(token)
+
         if request.summon_message_id is not None:
-            with suppress(TelegramBadRequest, TelegramForbiddenError):
+            try:
                 await message.bot.delete_business_messages(
                     business_connection_id=request.business_connection_id,
                     message_ids=[request.summon_message_id],
+                )
+            except (TelegramBadRequest, TelegramForbiddenError) as error:
+                logger.info(
+                    "STREAK_GUEST_SUMMON_DELETE_SKIPPED connection=%s chat=%s error=%s",
+                    request.business_connection_id,
+                    request.chat_id,
+                    error,
+                )
+            else:
+                logger.info(
+                    "STREAK_GUEST_SUMMON_DELETED connection=%s chat=%s",
+                    request.business_connection_id,
+                    request.chat_id,
                 )
 
     return router

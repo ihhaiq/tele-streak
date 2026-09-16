@@ -137,7 +137,7 @@ MIGRATIONS = (
     (
         "UPDATE streaks SET "
         "freeze_count=CASE WHEN freeze_count < 3 THEN 3 ELSE freeze_count END, "
-        "auto_freeze=0, freeze_seed_version=1 WHERE freeze_seed_version=0"
+        "freeze_seed_version=1 WHERE freeze_seed_version=0"
     ),
 )
 
