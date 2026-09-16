@@ -64,6 +64,7 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
                             disable_notification=True,
                         )
                     except TelegramBadRequest as error:
+                        await repository.finish_guest_streak_request(token)
                         logger.warning(
                             "STREAK_GUEST_INVOKE_REJECTED connection=%s chat=%s error=%s",
                             connection_id,
@@ -110,7 +111,7 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
                 await stickers.send_notice_text(
                     connection_id=connection_id,
                     chat_id=message.chat.id,
-                    text="تعذر قراءة الستريك مؤقتًا. تأكد أن اتصال Business مفعّل ثم حاول مجددًا.",
+                    text="تعذر قراءة الستريك مؤقتًا. تأكد أن اتصال الأعمال مفعّل ثم حاول مجددًا.",
                 )
             return
 
@@ -130,7 +131,7 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
             )
         except Exception:
             logger.exception(
-                "Streak completed but sticker send failed: connection=%s chat=%s days=%s",
+                "STREAK_STICKER_SEND_FAILED connection=%s chat=%s days=%s",
                 message.business_connection_id,
                 message.chat.id,
                 completion.days,
