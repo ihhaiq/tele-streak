@@ -95,3 +95,33 @@ def test_freeze_is_awarded_at_thirty_days(tmp_path):
         assert record.freeze_count == 1
 
     asyncio.run(scenario())
+
+
+def test_timezone_and_chat_controls(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "test.db")
+        await database.init()
+        repository = Repository(database)
+        await repository.upsert_connection("bc-1", 10, None, True)
+
+        assert await repository.get_connection_timezone("bc-1") == "Asia/Baghdad"
+        assert await repository.set_owner_timezone(10, "UTC") == 1
+        assert await repository.get_connection_timezone("bc-1") == "UTC"
+
+        await repository.register_activity(
+            connection_id="bc-1",
+            chat_id=20,
+            message_id=1,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-16",
+            yesterday="2026-09-15",
+            choose_pose=lambda days, last: "pose",
+        )
+        assert await repository.toggle_chat_setting(10, 20, "enabled") is False
+        streak = await repository.get_owner_streak(10, 20)
+        assert streak is not None
+        assert streak.is_enabled is False
+        assert await repository.reset_streak(10, 20)
+
+    asyncio.run(scenario())
