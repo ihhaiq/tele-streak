@@ -42,7 +42,8 @@ def build_router(repository: Repository) -> Router:
             f"أعلى Streak بالتاريخ: {stats['highest_ever']}\n"
             f"المحادثات النشطة: {stats['chats']}\n"
             f"الأيام المكتملة: {stats['completed_days']}\n"
-            f"مرات استخدام Freeze: {stats['freezes_used']}",
+            f"مرات استخدام Freeze: {stats['freezes_used']}\n"
+            f"أفضل محادثة: {stats['best_chat_id'] or 'لا توجد'}",
             reply_markup=dashboard_keyboard(),
         )
 
