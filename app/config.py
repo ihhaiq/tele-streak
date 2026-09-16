@@ -15,6 +15,7 @@ class Settings:
     database_path: Path
     timezone: str
     assets_dir: Path
+    ready_stickers_dir: Path
     rendered_dir: Path
 
 
@@ -26,6 +27,7 @@ def load_settings() -> Settings:
 
     database_path = Path(os.getenv("DATABASE_PATH", str(root / "data" / "streak.db")))
     assets_dir = root / "assets" / "jake"
+    ready_stickers_dir = root / "assets" / "streak_stickers" / "jake" / "ready"
     rendered_dir = root / "data" / "rendered"
     database_path.parent.mkdir(parents=True, exist_ok=True)
     rendered_dir.mkdir(parents=True, exist_ok=True)
@@ -35,5 +37,6 @@ def load_settings() -> Settings:
         database_path=database_path,
         timezone=os.getenv("TIMEZONE", "Asia/Baghdad"),
         assets_dir=assets_dir,
+        ready_stickers_dir=ready_stickers_dir,
         rendered_dir=rendered_dir,
     )
