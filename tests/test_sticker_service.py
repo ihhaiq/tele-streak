@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services.rich_status import build_streak_rich_message
 from app.services.sticker_service import StickerService, resolve_sticker_path
 
 
@@ -82,6 +83,25 @@ def test_status_uses_rich_h1_and_details(tmp_path):
     assert rich.is_rtl is True
     assert "<h1>🔥 حالة الستريك</h1>" in rich.html
     assert "<details><summary>تفاصيل الستريك 🫠</summary>" in rich.html
-    assert "رصيد الحماية: <b>3 🧊</b>" in rich.html
-    assert "آخر يوم تم احتسابه ضمن الستريك" in rich.html
+    assert "الحماية المتاحة: <b>🧊🧊🧊</b>" in rich.html
+    assert "آخر يوم ناجح" in rich.html
     assert bot.text_kwargs is None
+    assert '<tg-button type="disabled" style="primary">' in rich.html
+    assert 'format="r"' in rich.html
+
+
+
+def test_zero_breaks_are_hidden_and_zero_protection_is_clear():
+    rich = build_streak_rich_message(
+        current=4,
+        longest=9,
+        completed_days=10,
+        break_count=0,
+        freeze_count=0,
+        last_completed_day="2026-09-16",
+        timezone_name="Asia/Baghdad",
+    )
+
+    assert rich.html is not None
+    assert "عدد مرات انقطاع الستريك" not in rich.html
+    assert "الحماية المتاحة: <b>لا توجد</b>" in rich.html
