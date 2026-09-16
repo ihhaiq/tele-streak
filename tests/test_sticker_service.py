@@ -88,6 +88,7 @@ def test_status_uses_rich_h1_and_details(tmp_path):
     assert bot.text_kwargs is None
     assert '<tg-button type="disabled">⏳ ' in rich.html
     assert '<tg-button-row' not in rich.html
+    assert 'format="r"' in rich.html
     assert 'قريبًا' not in rich.html
 
 
