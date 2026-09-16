@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS streaks (
     notifications_enabled INTEGER NOT NULL DEFAULT 1,
     is_enabled INTEGER NOT NULL DEFAULT 1,
     freeze_count INTEGER NOT NULL DEFAULT 3,
-    auto_freeze INTEGER NOT NULL DEFAULT 1,
+    auto_freeze INTEGER NOT NULL DEFAULT 0,
     freezes_used INTEGER NOT NULL DEFAULT 0,
     revivable_streak INTEGER NOT NULL DEFAULT 0,
     revivable_day TEXT,
@@ -113,7 +113,7 @@ MIGRATIONS = (
     "ALTER TABLE streaks ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE streaks ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE streaks ADD COLUMN freeze_count INTEGER NOT NULL DEFAULT 3",
-    "ALTER TABLE streaks ADD COLUMN auto_freeze INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE streaks ADD COLUMN auto_freeze INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN freezes_used INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN revivable_streak INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN revivable_day TEXT",
@@ -121,7 +121,7 @@ MIGRATIONS = (
     (
         "UPDATE streaks SET "
         "freeze_count=CASE WHEN freeze_count < 3 THEN 3 ELSE freeze_count END, "
-        "freeze_seed_version=1 WHERE freeze_seed_version=0"
+        "auto_freeze=0, freeze_seed_version=1 WHERE freeze_seed_version=0"
     ),
 )
 
