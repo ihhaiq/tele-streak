@@ -17,6 +17,18 @@ def build_router(streaks: StreakService, stickers: StickerService) -> Router:
 
     @router.business_message()
     async def on_business_message(message: Message) -> None:
+        if message.text and message.text.strip() == "ستريك":
+            status = await streaks.get_status(message)
+            if status is not None and message.business_connection_id:
+                await stickers.send_status(
+                    connection_id=message.business_connection_id,
+                    chat_id=message.chat.id,
+                    current=status.current,
+                    longest=status.longest,
+                    last_completed_day=status.last_completed_day,
+                )
+            return
+
         if not should_count(message):
             return
 
