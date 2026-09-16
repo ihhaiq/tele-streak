@@ -14,6 +14,8 @@ local day.
 - Prevents duplicate completion with an atomic SQLite transaction.
 - Stores current and longest streak values.
 - Sends reviewed ready-made Jake WEBP stickers for streaks `1–60`.
+- Creates and synchronizes a real Telegram sticker set on first streak use.
+- Adds Telegram's animated fire effect to streak status and success messages.
 - Falls back to the metadata-driven renderer when ready art is unavailable.
 - Adds an inline button formatted as `🔥 N`.
 - Lets either participant send `ستريك` to view current status without counting
@@ -42,7 +44,15 @@ reviewed.
 
 5. Connect the bot to the Telegram Business account.
 6. In a private chat, let the peer and owner each send one normal message. The
-   bot sends the completed streak sticker after both have participated.
+   bot creates/synchronizes the sticker set on first use, then sends its numbered
+   sticker after both have participated.
+
+Optional settings:
+
+- `MESSAGE_EFFECT_ID` — fire effect ID; leave empty to disable effects.
+- `STICKER_SET_OWNER_ID` — explicit pack owner. If empty, the first connected
+  Business account becomes the owner.
+- `STICKER_SET_TITLE` — visible Telegram sticker-set title.
 
 ## Commands
 
