@@ -32,6 +32,12 @@ def build_router(streaks: StreakService, stickers: StickerService) -> Router:
     @router.business_message()
     async def on_business_message(message: Message) -> None:
         if is_streak_query(message.text):
+            logger.info(
+                "STREAK_COMMAND connection=%s chat=%s message=%s",
+                message.business_connection_id,
+                message.chat.id,
+                message.message_id,
+            )
             status = await streaks.get_status(message)
             if status is not None and message.business_connection_id:
                 await stickers.send_status(
@@ -45,6 +51,11 @@ def build_router(streaks: StreakService, stickers: StickerService) -> Router:
                     last_completed_day=status.last_completed_day,
                 )
             elif message.business_connection_id:
+                logger.warning(
+                    "STREAK_COMMAND_STATUS_UNAVAILABLE connection=%s chat=%s",
+                    message.business_connection_id,
+                    message.chat.id,
+                )
                 await stickers.send_notice_text(
                     connection_id=message.business_connection_id,
                     chat_id=message.chat.id,
