@@ -76,5 +76,5 @@ class ReadyPackBuilder:
             )
             pose.save(
                 self.ready_dir / f"{day:03}.webp",
-                "WEBP", quality=90, method=6,
+                "WEBP", quality=88, method=4,
             )
