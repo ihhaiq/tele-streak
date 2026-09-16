@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from aiogram import Bot
 from aiogram.types import FSInputFile
 
@@ -9,10 +11,17 @@ from app.stickers.renderer import StickerRenderer
 
 
 class StickerService:
-    def __init__(self, bot: Bot, repository: Repository, renderer: StickerRenderer):
+    def __init__(
+        self,
+        bot: Bot,
+        repository: Repository,
+        renderer: StickerRenderer,
+        ready_stickers_dir: Path,
+    ):
         self.bot = bot
         self.repository = repository
         self.renderer = renderer
+        self.ready_stickers_dir = ready_stickers_dir
 
     async def send_status(
         self,
@@ -43,7 +52,8 @@ class StickerService:
         pose: str,
         days: int,
     ) -> None:
-        path = self.renderer.render(pose, days)
+        ready = self.ready_stickers_dir / f"{days:03}.webp"
+        path = ready if ready.is_file() else self.renderer.render(pose, days)
         sent = await self.bot.send_sticker(
             chat_id=chat_id,
             sticker=FSInputFile(path),
