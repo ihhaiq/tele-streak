@@ -21,7 +21,7 @@ def sticker_set_name(bot_username: str, part: int = 1) -> str:
     safe = re.sub(r"[^a-z0-9_]", "", bot_username.lower())
     if not safe:
         raise ValueError("bot username cannot produce a sticker-set name")
-    return f"jake_streak_{part}_by_{safe}"
+    return f"jake_streak_shared_{part}_by_{safe}"
 
 
 @dataclass(frozen=True, slots=True)
