@@ -49,6 +49,13 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
                         connection_id,
                         message.chat.id,
                     )
+                    if token is None:
+                        logger.info(
+                            "STREAK_GUEST_COOLDOWN connection=%s chat=%s",
+                            connection_id,
+                            message.chat.id,
+                        )
+                        return
                     try:
                         summon = await message.bot.send_message(
                             chat_id=message.chat.id,
@@ -58,7 +65,7 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
                         )
                     except TelegramBadRequest as error:
                         logger.warning(
-                            "GUEST_SELF_INVOKE_SEND_REJECTED connection=%s chat=%s error=%s",
+                            "STREAK_GUEST_INVOKE_REJECTED connection=%s chat=%s error=%s",
                             connection_id,
                             message.chat.id,
                             error,
@@ -69,7 +76,7 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
                             summon.message_id,
                         )
                         logger.info(
-                            "GUEST_SELF_INVOKE_SENT connection=%s chat=%s message=%s",
+                            "STREAK_GUEST_INVOKE_SENT connection=%s chat=%s message=%s",
                             connection_id,
                             message.chat.id,
                             summon.message_id,
@@ -77,11 +84,12 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
                         return
 
                 logger.warning(
-                    "GUEST_MODE_UNAVAILABLE_OR_REJECTED connection=%s chat=%s supports_guest=%s",
+                    "STREAK_GUEST_UNAVAILABLE connection=%s chat=%s supports_guest=%s",
                     connection_id,
                     message.chat.id,
                     bool(me.supports_guest_queries),
                 )
+                timezone_name = await repository.get_connection_timezone(connection_id)
                 await stickers.send_status(
                     connection_id=connection_id,
                     chat_id=message.chat.id,
@@ -91,6 +99,7 @@ def build_router(streaks: StreakService, stickers: StickerService, repository: R
                     break_count=status.break_count,
                     freeze_count=status.freeze_count,
                     last_completed_day=status.last_completed_day,
+                    timezone_name=timezone_name,
                 )
             elif connection_id:
                 logger.warning(
