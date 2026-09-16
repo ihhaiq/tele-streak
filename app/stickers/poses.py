@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 from dataclasses import dataclass
@@ -31,7 +32,7 @@ class PoseCatalog:
 
     def __init__(self, assets_dir: Path, *, rng: random.Random | None = None):
         self.assets_dir = Path(assets_dir)
-        self.rng = rng or random.SystemRandom()
+        self.rng = rng
         self._poses = self._load()
 
     def _load(self) -> tuple[Pose, ...]:
@@ -95,4 +96,12 @@ class PoseCatalog:
         alternatives = [pose for pose in candidates if pose.id != last_pose]
         if alternatives:
             candidates = alternatives
-        return self.rng.choices(candidates, weights=[pose.weight for pose in candidates], k=1)[0]
+        rng = self.rng
+        if rng is None:
+            signature = ",".join(sorted(pose.id for pose in candidates))
+            seed = int.from_bytes(
+                hashlib.sha256(f"{days}:{last_pose or ''}:{signature}".encode()).digest()[:8],
+                "big",
+            )
+            rng = random.Random(seed)
+        return rng.choices(candidates, weights=[pose.weight for pose in candidates], k=1)[0]
