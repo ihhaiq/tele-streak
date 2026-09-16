@@ -30,11 +30,11 @@ def test_special_stickers_exist():
 
 
 def test_sticker_set_name_is_deterministic():
-    assert sticker_set_name("MyStreakBot") == "jake_streak_by_mystreakbot"
+    assert sticker_set_name("MyStreakBot") == "jake_streak_shared_1_by_mystreakbot"
 
 
 def test_sticker_set_name_removes_invalid_characters():
-    assert sticker_set_name("My-Streak.Bot") == "jake_streak_by_mystreakbot"
+    assert sticker_set_name("My-Streak.Bot") == "jake_streak_shared_1_by_mystreakbot"
 
 
 def test_sticker_set_name_respects_telegram_limit():

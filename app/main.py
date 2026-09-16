@@ -50,8 +50,8 @@ async def main() -> None:
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository))
     dp.include_router(business_router(streaks, stickers))
-    dp.include_router(callbacks_router(repository))
-    dp.include_router(private_router(repository))
+    dp.include_router(callbacks_router())
+    dp.include_router(private_router(repository, stickers))
 
     scheduler = StreakScheduler(repository, stickers)
     scheduler_task = asyncio.create_task(
