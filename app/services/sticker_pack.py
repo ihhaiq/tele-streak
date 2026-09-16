@@ -45,7 +45,6 @@ class StickerPack:
         self.builder = ReadyPackBuilder(sheet, ready_dir)
 
     def _assets(self) -> list[PackAsset]:
-        self.builder.ensure()
         numbered = [PackAsset(str(day), self.ready_dir / f"{day:03}.webp", "🔥") for day in range(1, 251)]
         special = self.ready_dir.parent / "special"
         return numbered + [
@@ -82,6 +81,7 @@ class StickerPack:
         async with self._lock:
             if len(self._file_ids) >= 252:
                 return
+            await asyncio.to_thread(self.builder.ensure)
             assets = self._assets()
             if any(not asset.path.is_file() for asset in assets):
                 raise RuntimeError("sticker pack has missing assets")
