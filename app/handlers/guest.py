@@ -37,7 +37,7 @@ def build_router(repository: Repository) -> Router:
         request = await repository.get_guest_streak_request(token)
         if request is None:
             logger.warning(
-                "GUEST_STREAK_REQUEST_INVALID chat=%s",
+                "STREAK_GUEST_REQUEST_INVALID chat=%s",
                 message.chat.id,
             )
             return
