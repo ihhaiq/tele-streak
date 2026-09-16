@@ -16,7 +16,7 @@ from aiogram.types import FSInputFile, InlineKeyboardMarkup, Message
 
 from app.database.repository import Repository
 from app.keyboards.streak import revive_streak_keyboard, streak_keyboard
-from app.services.rich_status import build_streak_rich_message
+from app.services.rich_status import build_streak_fallback_text, build_streak_rich_message
 from app.services.sticker_pack import StickerPack
 
 logger = logging.getLogger(__name__)
@@ -91,8 +91,8 @@ class StickerService:
         break_count: int,
         freeze_count: int,
         last_completed_day: str | None,
+        timezone_name: str | None = None,
     ) -> None:
-        last_day = last_completed_day or "لا يوجد"
         rich_message = build_streak_rich_message(
             current=current,
             longest=longest,
@@ -100,6 +100,7 @@ class StickerService:
             break_count=break_count,
             freeze_count=freeze_count,
             last_completed_day=last_completed_day,
+            timezone_name=timezone_name,
         )
         kwargs = dict(
             chat_id=chat_id,
@@ -123,7 +124,7 @@ class StickerService:
                     return
                 except TelegramBadRequest as rich_error:
                     logger.warning(
-                        "Rich status rejected; falling back to text: %s",
+                        "STREAK_RICH_REJECTED error=%s",
                         rich_error,
                     )
             else:
@@ -135,15 +136,14 @@ class StickerService:
         await self.bot.send_message(
             chat_id=chat_id,
             business_connection_id=connection_id,
-            text=(
-                "🔥 حالة الستريك\n\n"
-                "تفاصيل الستريك 🫠\n"
-                f"الستريك الحالي: {current}\n"
-                f"أطول ستريك: {longest}\n"
-                f"إجمالي أيام الستريك: {completed_days}\n"
-                f"عدد مرات انقطاع الستريك: {break_count}\n"
-                f"رصيد الحماية: {freeze_count} 🧊\n"
-                f"آخر يوم تم احتسابه ضمن الستريك: {last_day}"
+            text=build_streak_fallback_text(
+                current=current,
+                longest=longest,
+                completed_days=completed_days,
+                break_count=break_count,
+                freeze_count=freeze_count,
+                last_completed_day=last_completed_day,
+                timezone_name=timezone_name,
             ),
         )
 
@@ -210,11 +210,16 @@ class StickerService:
         connection_id: str,
         chat_id: int,
         name: str,
+        revive_available: bool = False,
     ) -> None:
         if name not in {"warning", "broken"}:
             raise ValueError("unknown special sticker")
         sticker_key = f"special:{name}"
-        reply_markup = revive_streak_keyboard() if name == "broken" else None
+        reply_markup = (
+            revive_streak_keyboard()
+            if name == "broken" and revive_available
+            else None
+        )
         pack_file_id = self.pack.cached_file_id(name)
         if pack_file_id:
             await self._send_sticker(
