@@ -41,6 +41,7 @@ class StickerPack:
         self.title = title[:50]
         self._lock = asyncio.Lock()
         self._file_ids: dict[str, str] = {}
+        self._sync_task: asyncio.Task[None] | None = None
         sheet = ready_dir.parents[2] / "jake" / "generated" / "poses_sheet.webp"
         self.builder = ReadyPackBuilder(sheet, ready_dir)
 
@@ -126,3 +127,22 @@ class StickerPack:
     async def special_file_id(self, connection_id: str, name: str) -> str | None:
         await self.ensure(connection_id)
         return self._file_ids.get(name)
+
+    def cached_file_id(self, key: str) -> str | None:
+        return self._file_ids.get(key)
+
+    def start_sync(self, connection_id: str) -> None:
+        if self._sync_task is not None and not self._sync_task.done():
+            return
+        self._sync_task = asyncio.create_task(
+            self._sync(connection_id),
+            name="sticker-pack-sync",
+        )
+
+    async def _sync(self, connection_id: str) -> None:
+        try:
+            await self.ensure(connection_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("STICKER_PACK_SYNC_FAILED connection=%s", connection_id)

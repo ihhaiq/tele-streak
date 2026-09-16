@@ -176,21 +176,16 @@ class StickerService:
         if name not in {"warning", "broken"}:
             raise ValueError("unknown special sticker")
         sticker_key = f"special:{name}"
-        try:
-            pack_file_id = await self.pack.special_file_id(connection_id, name)
-            if pack_file_id:
-                await self._send_sticker(
-                    connection_id=connection_id,
-                    chat_id=chat_id,
-                    sticker=pack_file_id,
-                    days=None,
-                )
-                return
-        except Exception:
-            logger.exception(
-                "Special sticker pack unavailable; using direct upload: name=%s",
-                name,
+        pack_file_id = self.pack.cached_file_id(name)
+        if pack_file_id:
+            await self._send_sticker(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                sticker=pack_file_id,
+                days=None,
             )
+            return
+        self.pack.start_sync(connection_id)
         cached_file_id = await self.repository.get_sticker_file_id(sticker_key)
         sent: Message | None = None
 
@@ -232,21 +227,17 @@ class StickerService:
     ) -> None:
         sent: Message | None = None
 
-        try:
-            pack_file_id = await self.pack.file_id(connection_id, days)
-            if pack_file_id:
-                sent = await self._send_sticker(
-                    connection_id=connection_id,
-                    chat_id=chat_id,
-                    sticker=pack_file_id,
-                    days=days,
-                    with_effect=True,
-                )
-        except Exception:
-            logger.exception(
-                "Sticker pack unavailable; falling back to direct upload: days=%s",
-                days,
+        pack_file_id = self.pack.cached_file_id(str(days))
+        if pack_file_id:
+            sent = await self._send_sticker(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                sticker=pack_file_id,
+                days=days,
+                with_effect=True,
             )
+        else:
+            self.pack.start_sync(connection_id)
 
         sticker_key = f"streak:{days}"
         cached_file_id = await self.repository.get_sticker_file_id(sticker_key)
