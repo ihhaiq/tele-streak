@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.database.repository import Repository, StreakRecord
 from app.handlers.private import dashboard_keyboard
+from app.services.rich_status import protection_text
 
 
 def _chat_keyboard(streak: StreakRecord) -> InlineKeyboardMarkup:
@@ -37,7 +38,7 @@ def _details(streak: StreakRecord) -> str:
         lines.append(f"مرات الانقطاع: {streak.break_count}")
     lines.extend(
         [
-            f"الحماية المتاحة: {streak.freeze_count}",
+            f"الحماية المتاحة: {protection_text(streak.freeze_count)}",
             f"مرات استخدام الحماية: {streak.freezes_used}",
             f"بدأ التتبع: {streak.created_at[:10]}",
         ]
@@ -83,7 +84,7 @@ def build_router(repository: Repository) -> Router:
             )
         await callback.answer(
             f"تم إحياء الستريك 🔥 عاد إلى {result.streak}. "
-            f"المتبقي {result.freeze_count} 🧊",
+            f"المتبقي: {protection_text(result.freeze_count)}",
             show_alert=True,
         )
 
