@@ -14,6 +14,27 @@ class StickerService:
         self.repository = repository
         self.renderer = renderer
 
+    async def send_status(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        current: int,
+        longest: int,
+        last_completed_day: str | None,
+    ) -> None:
+        last_day = last_completed_day or "لا يوجد"
+        await self.bot.send_message(
+            chat_id=chat_id,
+            business_connection_id=connection_id,
+            text=(
+                "🔥 حالة الستريك\n"
+                f"الحالي: {current}\n"
+                f"الأعلى: {longest}\n"
+                f"آخر يوم مكتمل: {last_day}"
+            ),
+        )
+
     async def send_success(
         self,
         *,
