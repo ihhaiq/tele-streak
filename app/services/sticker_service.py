@@ -242,6 +242,7 @@ class StickerService:
                     chat_id=chat_id,
                     sticker=cached_file_id,
                     days=None,
+                    reply_markup=reply_markup,
                 )
             except TelegramBadRequest:
                 logger.warning(
