@@ -62,9 +62,7 @@ class StickerPack:
             return owner_id
         if self.owner_id is not None:
             return self.owner_id
-        if not connection_id:
-            raise RuntimeError("sticker pack owner is not configured")
-        return (await self.bot.get_business_connection(connection_id)).user.id
+        raise RuntimeError("STICKER_SET_OWNER_ID must be configured for the developer")
 
     async def _retry(self, operation, *args, **kwargs):
         for attempt in range(1, MAX_ATTEMPTS + 1):
