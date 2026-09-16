@@ -71,6 +71,19 @@ class StreakScheduler:
                         chat_id=streak.chat_id,
                         name="warning",
                     )
+                    owner_missing = streak.owner_sent_day != today
+                    peer_missing = streak.peer_sent_day != today
+                    if owner_missing and peer_missing:
+                        missing = "أنتما لم ترسلا اليوم"
+                    elif owner_missing:
+                        missing = "صاحب الحساب لم يرسل اليوم"
+                    else:
+                        missing = "الطرف الثاني لم يرسل اليوم"
+                    await self.stickers.send_notice_text(
+                        connection_id=streak.business_connection_id,
+                        chat_id=streak.chat_id,
+                        text=f"⏰ بقي أقل من ساعتين. {missing} وقد ينقطع الستريك.",
+                    )
                     logger.info(
                         "WARNING_SENT connection=%s chat=%s",
                         streak.business_connection_id,
