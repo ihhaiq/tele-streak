@@ -187,8 +187,9 @@ class Repository:
                 """
                 INSERT OR IGNORE INTO streaks(
                     business_connection_id, chat_id, peer_user_id,
-                    freeze_count, freeze_seed_version, created_at, updated_at
-                ) VALUES (?, ?, ?, 3, 1, ?, ?)
+                    freeze_count, auto_freeze, freeze_seed_version,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, 3, 0, 1, ?, ?)
                 """,
                 (connection_id, chat_id, peer_user_id, now, now),
             )
