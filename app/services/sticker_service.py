@@ -1,13 +1,30 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
 from aiogram import Bot
 from aiogram.types import FSInputFile
 
 from app.database.repository import Repository
 from app.keyboards.streak import streak_keyboard
-from app.stickers.renderer import StickerRenderer
+
+
+class Renderer(Protocol):
+    def render(self, pose_id: str, days: int) -> Path: ...
+
+
+def resolve_sticker_path(
+    ready_stickers_dir: Path,
+    renderer: Renderer,
+    pose_id: str,
+    days: int,
+) -> Path:
+    """Prefer reviewed ready art and render only when that number is absent."""
+    if days < 1:
+        raise ValueError("days must be positive")
+    ready = ready_stickers_dir / f"{days:03}.webp"
+    return ready if ready.is_file() else renderer.render(pose_id, days)
 
 
 class StickerService:
@@ -15,7 +32,7 @@ class StickerService:
         self,
         bot: Bot,
         repository: Repository,
-        renderer: StickerRenderer,
+        renderer: Renderer,
         ready_stickers_dir: Path,
     ):
         self.bot = bot
@@ -52,12 +69,20 @@ class StickerService:
         pose: str,
         days: int,
     ) -> None:
-        ready = self.ready_stickers_dir / f"{days:03}.webp"
-        path = ready if ready.is_file() else self.renderer.render(pose, days)
+        path = resolve_sticker_path(
+            self.ready_stickers_dir,
+            self.renderer,
+            pose,
+            days,
+        )
         sent = await self.bot.send_sticker(
             chat_id=chat_id,
             sticker=FSInputFile(path),
             business_connection_id=connection_id,
             reply_markup=streak_keyboard(days),
         )
-        await self.repository.set_success_message_id(connection_id, chat_id, sent.message_id)
+        await self.repository.set_success_message_id(
+            connection_id,
+            chat_id,
+            sent.message_id,
+        )
