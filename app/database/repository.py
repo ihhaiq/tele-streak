@@ -164,17 +164,32 @@ class Repository:
         connection_id: str,
         chat_id: int,
         *,
-        ttl_seconds: int = 120,
-    ) -> str:
+        ttl_seconds: int = 45,
+        cooldown_seconds: int = 3,
+    ) -> str | None:
         now_dt = datetime.now(timezone.utc)
         now = now_dt.isoformat()
+        cooldown_after = (now_dt - timedelta(seconds=cooldown_seconds)).isoformat()
         expires_at = (now_dt + timedelta(seconds=ttl_seconds)).isoformat()
-        token = secrets.token_urlsafe(9)
+        token = secrets.token_urlsafe(6)
         async with self.database.connect() as db:
             await db.execute(
                 "DELETE FROM guest_streak_requests WHERE expires_at <= ? OR used_at IS NOT NULL",
                 (now,),
             )
+            cursor = await db.execute(
+                """
+                SELECT 1
+                FROM guest_streak_requests
+                WHERE business_connection_id=? AND chat_id=?
+                  AND used_at IS NULL AND created_at>?
+                LIMIT 1
+                """,
+                (connection_id, chat_id, cooldown_after),
+            )
+            if await cursor.fetchone() is not None:
+                await db.commit()
+                return None
             await db.execute(
                 """
                 INSERT INTO guest_streak_requests(
@@ -203,13 +218,12 @@ class Repository:
             )
             await db.commit()
 
-    async def consume_guest_streak_request(
+    async def get_guest_streak_request(
         self,
         token: str,
     ) -> GuestStreakRequest | None:
         now = self._now()
         async with self.database.connect() as db:
-            await db.execute("BEGIN IMMEDIATE")
             cursor = await db.execute(
                 """
                 SELECT token, business_connection_id, chat_id, summon_message_id
@@ -220,13 +234,7 @@ class Repository:
             )
             row = await cursor.fetchone()
             if row is None:
-                await db.rollback()
                 return None
-            await db.execute(
-                "UPDATE guest_streak_requests SET used_at=? WHERE token=?",
-                (now, token),
-            )
-            await db.commit()
             return GuestStreakRequest(
                 token=str(row["token"]),
                 business_connection_id=str(row["business_connection_id"]),
@@ -237,6 +245,14 @@ class Repository:
                     else None
                 ),
             )
+
+    async def finish_guest_streak_request(self, token: str) -> None:
+        async with self.database.connect() as db:
+            await db.execute(
+                "DELETE FROM guest_streak_requests WHERE token=?",
+                (token,),
+            )
+            await db.commit()
 
     async def register_activity(
         self,
