@@ -15,7 +15,7 @@ def build_streak_rich_message(
     last_day = last_completed_day or "لا يوجد"
     return InputRichMessage(
         html=(
-            "<h3>🔥 حالة الستريك</h3>"
+            "<h1>🔥 حالة الستريك</h1>"
             "<details><summary>تفاصيل الستريك 🫠</summary>"
             "<p>"
             f"الستريك الحالي: <b>{current}</b><br>"
