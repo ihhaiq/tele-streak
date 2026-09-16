@@ -75,6 +75,10 @@ class StickerService:
             text=text,
         )
 
+    async def prepare_pack_for_owner(self, owner_id: int) -> None:
+        """Synchronize the complete pack for an explicitly selected owner."""
+        await self.pack.ensure(owner_id=owner_id)
+
     async def send_status(
         self,
         *,
