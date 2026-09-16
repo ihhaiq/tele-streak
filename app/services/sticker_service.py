@@ -12,10 +12,10 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
     TelegramServerError,
 )
-from aiogram.types import FSInputFile, Message
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InputRichMessage, Message
 
 from app.database.repository import Repository
-from app.keyboards.streak import streak_keyboard
+from app.keyboards.streak import revive_streak_keyboard, streak_keyboard
 from app.services.sticker_pack import StickerPack
 
 logger = logging.getLogger(__name__)
@@ -92,29 +92,66 @@ class StickerService:
         last_completed_day: str | None,
     ) -> None:
         last_day = last_completed_day or "لا يوجد"
+        rich_message = InputRichMessage(
+            html=(
+                "<h3>🔥 حالة الستريك</h3>"
+                "<details><summary>تفاصيل الستريك 🫠</summary>"
+                "<p>"
+                f"الستريك الحالي: <b>{current}</b><br/>"
+                f"أطول ستريك: <b>{longest}</b><br/>"
+                f"إجمالي أيام الستريك: <b>{completed_days}</b><br/>"
+                f"عدد مرات انقطاع الستريك: <b>{break_count}</b><br/>"
+                f"رصيد الحماية: <b>{freeze_count} 🧊</b><br/>"
+                f"آخر يوم تم احتسابه ضمن الستريك: <b>{last_day}</b>"
+                "</p></details>"
+            ),
+            is_rtl=True,
+        )
         kwargs = dict(
             chat_id=chat_id,
             business_connection_id=connection_id,
-            text=(
-                "🔥 حالة الستريك\n"
-                f"الحالي: {current}\n"
-                f"الأعلى: {longest}\n"
-                f"الأيام المكتملة: {completed_days}\n"
-                f"مرات الانقطاع: {break_count}\n"
-                f"رصيد التجميد: {freeze_count} 🧊\n"
-                f"آخر يوم مكتمل: {last_day}"
-            ),
+            rich_message=rich_message,
         )
         try:
-            await self.bot.send_message(
+            await self.bot.send_rich_message(
                 **kwargs,
                 message_effect_id=self.message_effect_id,
             )
+            return
         except TelegramBadRequest as error:
-            if not self.message_effect_id:
-                raise
-            logger.warning("Message effect rejected; sending status without it: %s", error)
-            await self.bot.send_message(**kwargs)
+            if self.message_effect_id:
+                logger.warning(
+                    "Rich status effect rejected; retrying without effect: %s",
+                    error,
+                )
+                try:
+                    await self.bot.send_rich_message(**kwargs)
+                    return
+                except TelegramBadRequest as rich_error:
+                    logger.warning(
+                        "Rich status rejected; falling back to text: %s",
+                        rich_error,
+                    )
+            else:
+                logger.warning(
+                    "Rich status rejected; falling back to text: %s",
+                    error,
+                )
+
+        await self.bot.send_message(
+            chat_id=chat_id,
+            business_connection_id=connection_id,
+            text=(
+                "🔥 حالة الستريك\n\n"
+                "تفاصيل الستريك 🫠\n"
+                f"الستريك الحالي: {current}\n"
+                f"أطول ستريك: {longest}\n"
+                f"إجمالي أيام الستريك: {completed_days}\n"
+                f"عدد مرات انقطاع الستريك: {break_count}\n"
+                f"رصيد الحماية: {freeze_count} 🧊\n"
+                f"آخر يوم تم احتسابه ضمن الستريك: {last_day}"
+            ),
+        )
 
     async def _send_sticker_once(
         self,
@@ -124,12 +161,13 @@ class StickerService:
         sticker: str | FSInputFile,
         days: int | None,
         with_effect: bool,
+        reply_markup: InlineKeyboardMarkup | None = None,
     ) -> Message:
         kwargs = dict(
             chat_id=chat_id,
             sticker=sticker,
             business_connection_id=connection_id,
-            reply_markup=streak_keyboard(days) if days else None,
+            reply_markup=reply_markup or (streak_keyboard(days) if days else None),
         )
         try:
             return await self.bot.send_sticker(
@@ -150,6 +188,7 @@ class StickerService:
         sticker: str | FSInputFile,
         days: int | None,
         with_effect: bool = False,
+        reply_markup: InlineKeyboardMarkup | None = None,
     ) -> Message:
         for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
             try:
@@ -159,6 +198,7 @@ class StickerService:
                     sticker=sticker,
                     days=days,
                     with_effect=with_effect,
+                    reply_markup=reply_markup,
                 )
             except TelegramRetryAfter as error:
                 if attempt == MAX_SEND_ATTEMPTS:
@@ -180,6 +220,7 @@ class StickerService:
         if name not in {"warning", "broken"}:
             raise ValueError("unknown special sticker")
         sticker_key = f"special:{name}"
+        reply_markup = revive_streak_keyboard() if name == "broken" else None
         pack_file_id = self.pack.cached_file_id(name)
         if pack_file_id:
             await self._send_sticker(
@@ -187,6 +228,7 @@ class StickerService:
                 chat_id=chat_id,
                 sticker=pack_file_id,
                 days=None,
+                reply_markup=reply_markup,
             )
             return
         self.pack.start_sync(connection_id)
@@ -200,6 +242,7 @@ class StickerService:
                     chat_id=chat_id,
                     sticker=cached_file_id,
                     days=None,
+                    reply_markup=reply_markup,
                 )
             except TelegramBadRequest:
                 logger.warning(
@@ -214,6 +257,7 @@ class StickerService:
                 chat_id=chat_id,
                 sticker=FSInputFile(path),
                 days=None,
+                reply_markup=reply_markup,
             )
             if sent.sticker:
                 await self.repository.set_sticker_file_id(

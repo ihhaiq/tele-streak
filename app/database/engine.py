@@ -38,9 +38,12 @@ CREATE TABLE IF NOT EXISTS streaks (
     last_broken_day TEXT,
     notifications_enabled INTEGER NOT NULL DEFAULT 1,
     is_enabled INTEGER NOT NULL DEFAULT 1,
-    freeze_count INTEGER NOT NULL DEFAULT 0,
-    auto_freeze INTEGER NOT NULL DEFAULT 1,
+    freeze_count INTEGER NOT NULL DEFAULT 3,
+    auto_freeze INTEGER NOT NULL DEFAULT 0,
     freezes_used INTEGER NOT NULL DEFAULT 0,
+    revivable_streak INTEGER NOT NULL DEFAULT 0,
+    revivable_day TEXT,
+    freeze_seed_version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (business_connection_id, chat_id),
@@ -109,9 +112,17 @@ MIGRATIONS = (
     "ALTER TABLE streaks ADD COLUMN last_broken_day TEXT",
     "ALTER TABLE streaks ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE streaks ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 1",
-    "ALTER TABLE streaks ADD COLUMN freeze_count INTEGER NOT NULL DEFAULT 0",
-    "ALTER TABLE streaks ADD COLUMN auto_freeze INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE streaks ADD COLUMN freeze_count INTEGER NOT NULL DEFAULT 3",
+    "ALTER TABLE streaks ADD COLUMN auto_freeze INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN freezes_used INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE streaks ADD COLUMN revivable_streak INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE streaks ADD COLUMN revivable_day TEXT",
+    "ALTER TABLE streaks ADD COLUMN freeze_seed_version INTEGER NOT NULL DEFAULT 0",
+    (
+        "UPDATE streaks SET "
+        "freeze_count=CASE WHEN freeze_count < 3 THEN 3 ELSE freeze_count END, "
+        "auto_freeze=0, freeze_seed_version=1 WHERE freeze_seed_version=0"
+    ),
 )
 
 

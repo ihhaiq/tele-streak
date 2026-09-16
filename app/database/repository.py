@@ -40,6 +40,13 @@ class ActivityResult:
     pose_id: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class ReviveResult:
+    status: str
+    streak: int = 0
+    freeze_count: int = 0
+
+
 class Repository:
     def __init__(self, database: Database):
         self.database = database
@@ -180,8 +187,9 @@ class Repository:
                 """
                 INSERT OR IGNORE INTO streaks(
                     business_connection_id, chat_id, peer_user_id,
+                    freeze_count, auto_freeze, freeze_seed_version,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, 3, 0, 1, ?, ?)
                 """,
                 (connection_id, chat_id, peer_user_id, now, now),
             )
@@ -260,6 +268,8 @@ class Repository:
                     END,
                     last_completed_day=?,
                     last_pose=?,
+                    revivable_streak=0,
+                    revivable_day=NULL,
                     updated_at=?
                 WHERE business_connection_id=? AND chat_id=?
                 """,
@@ -424,6 +434,8 @@ class Repository:
                         freeze_count=freeze_count-1,
                         freezes_used=freezes_used+1,
                         last_completed_day=?,
+                        revivable_streak=0,
+                        revivable_day=NULL,
                         updated_at=?
                     WHERE business_connection_id=? AND chat_id=?
                     """,
@@ -443,16 +455,94 @@ class Repository:
             await db.execute(
                 """
                 UPDATE streaks SET
+                    revivable_streak=current_streak,
+                    revivable_day=?,
                     current_streak=0,
                     break_count=break_count+1,
                     last_broken_day=?,
                     updated_at=?
                 WHERE business_connection_id=? AND chat_id=?
                 """,
-                (today, now, connection_id, chat_id),
+                (missed_day, today, now, connection_id, chat_id),
             )
             await db.commit()
             return "broken"
+
+    async def revive_streak(
+        self,
+        connection_id: str,
+        chat_id: int,
+    ) -> ReviveResult:
+        now = self._now()
+        async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                SELECT current_streak, freeze_count, break_count,
+                       revivable_streak, revivable_day
+                FROM streaks
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (connection_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            if (
+                row is None
+                or int(row["current_streak"]) != 0
+                or int(row["revivable_streak"]) <= 0
+                or row["revivable_day"] is None
+            ):
+                await db.rollback()
+                return ReviveResult("unavailable")
+
+            freeze_count = int(row["freeze_count"])
+            if freeze_count <= 0:
+                await db.rollback()
+                return ReviveResult("no_balance", freeze_count=0)
+
+            restored_streak = int(row["revivable_streak"])
+            protected_day = str(row["revivable_day"])
+            remaining = freeze_count - 1
+            await db.execute(
+                """
+                UPDATE streaks SET
+                    current_streak=?,
+                    freeze_count=?,
+                    freezes_used=freezes_used+1,
+                    break_count=CASE
+                        WHEN break_count > 0 THEN break_count-1
+                        ELSE 0
+                    END,
+                    last_completed_day=?,
+                    last_broken_day=NULL,
+                    revivable_streak=0,
+                    revivable_day=NULL,
+                    updated_at=?
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (
+                    restored_streak,
+                    remaining,
+                    protected_day,
+                    now,
+                    connection_id,
+                    chat_id,
+                ),
+            )
+            await db.execute(
+                """
+                INSERT INTO freeze_history(
+                    business_connection_id, chat_id, protected_day, used_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (connection_id, chat_id, protected_day, now),
+            )
+            await db.commit()
+            return ReviveResult(
+                "revived",
+                streak=restored_streak,
+                freeze_count=remaining,
+            )
 
     async def get_connection_timezone(self, connection_id: str) -> str | None:
         async with self.database.connect() as db:

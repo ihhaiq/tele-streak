@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.database.repository import Repository, StreakRecord
@@ -38,6 +40,45 @@ def _details(streak: StreakRecord) -> str:
 
 def build_router(repository: Repository) -> Router:
     router = Router(name="callbacks")
+
+    @router.callback_query(F.data == "streak:revive")
+    async def revive_streak(callback: CallbackQuery, bot: Bot) -> None:
+        if callback.message is None:
+            await callback.answer("تعذر العثور على رسالة الستريك.", show_alert=True)
+            return
+
+        connection_id = getattr(callback.message, "business_connection_id", None)
+        if not connection_id:
+            await callback.answer("تعذر تحديد اتصال Business.", show_alert=True)
+            return
+
+        chat_id = callback.message.chat.id
+        result = await repository.revive_streak(connection_id, chat_id)
+        if result.status == "no_balance":
+            await callback.answer(
+                "نفد رصيد الحماية 🧊",
+                show_alert=True,
+            )
+            return
+        if result.status != "revived":
+            await callback.answer(
+                "لا يمكن إحياء هذا الستريك الآن.",
+                show_alert=True,
+            )
+            return
+
+        with suppress(TelegramBadRequest):
+            await bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=callback.message.message_id,
+                business_connection_id=connection_id,
+                reply_markup=None,
+            )
+        await callback.answer(
+            f"تم إحياء الستريك 🔥 عاد إلى {result.streak}. "
+            f"المتبقي {result.freeze_count} 🧊",
+            show_alert=True,
+        )
 
     @router.callback_query(F.data.startswith("streak_days:"))
     async def streak_days(callback: CallbackQuery) -> None:
