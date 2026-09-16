@@ -69,7 +69,12 @@ async def main() -> None:
     )
 
     me = await bot.get_me()
-    logging.getLogger(__name__).info("Started @%s (%s)", me.username, me.id)
+    logging.getLogger(__name__).info(
+        "Started @%s (%s) guest_mode=%s",
+        me.username,
+        me.id,
+        bool(me.supports_guest_queries),
+    )
     try:
         await dp.start_polling(
             bot,
