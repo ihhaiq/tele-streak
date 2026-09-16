@@ -57,7 +57,7 @@ class FakeBot:
         self.text_kwargs = kwargs
 
 
-def test_status_uses_rich_h3_and_details(tmp_path):
+def test_status_uses_rich_h1_and_details(tmp_path):
     bot = FakeBot()
     service = StickerService(
         bot,
@@ -80,7 +80,7 @@ def test_status_uses_rich_h3_and_details(tmp_path):
     assert bot.rich_kwargs is not None
     rich = bot.rich_kwargs["rich_message"]
     assert rich.is_rtl is True
-    assert "<h3>🔥 حالة الستريك</h3>" in rich.html
+    assert "<h1>🔥 حالة الستريك</h1>" in rich.html
     assert "<details><summary>تفاصيل الستريك 🫠</summary>" in rich.html
     assert "رصيد الحماية: <b>3 🧊</b>" in rich.html
     assert "آخر يوم تم احتسابه ضمن الستريك" in rich.html
