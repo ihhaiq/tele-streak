@@ -75,3 +75,37 @@ For local day D:
 
 - `/start` — setup reminder
 - `/status` — active Business connections + number of tracked chats
+
+
+## Asset engine and local sticker pack
+
+At startup the bot prepares a reusable local pack for streak values **1 through 250** in
+`data/rendered/`. Existing WEBP files are reused, so they are rendered only on the
+first run (or when a source asset changes). Generated stickers are intentionally
+ignored by Git.
+
+Pose definitions are discovered recursively under `assets/jake/`. To add a pose,
+place a transparent PNG and a JSON file beside it:
+
+```json
+{
+  "id": "hug",
+  "image": "hug.png",
+  "category": "normal",
+  "number_box": [0.19, 0.075, 0.76, 0.285],
+  "font_size": 120,
+  "rotation": -4,
+  "weight": 1.0,
+  "max_digits": 5
+}
+```
+
+Supported categories are `normal`, `waiting`, `milestone`, `rare`, and
+`broken`. Milestone JSON can also contain `"milestones": [7, 30, 100]`.
+The selector avoids using the same pose twice in a row when an alternative exists.
+
+## Chat command
+
+Either participant can send `ستريك` in the Business chat to view the current
+streak, longest streak, and last completed day. The query itself is not counted
+as daily streak activity.
