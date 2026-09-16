@@ -33,6 +33,8 @@ async def main() -> None:
 
     poses = PoseCatalog(settings.assets_dir)
     renderer = StickerRenderer(poses, settings.rendered_dir)
+    generated = await asyncio.to_thread(renderer.prewarm, 250)
+    logging.getLogger(__name__).info("Sticker pack ready: %s items", generated)
     streaks = StreakService(repository, settings.timezone, poses)
     stickers = StickerService(bot, repository, renderer)
 
