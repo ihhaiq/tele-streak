@@ -9,6 +9,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import (
     InlineQueryResultArticle,
     InputRichMessageContent,
+    InputTextMessageContent,
     Message,
 )
 
@@ -70,14 +71,39 @@ def build_router(repository: Repository) -> Router:
                 rich_message=rich_message,
             ),
         )
-        await message.answer_guest_query(result)
-
-        logger.info(
-            "GUEST_STREAK_RICH_SENT connection=%s chat=%s guest_chat=%s",
-            request.business_connection_id,
-            request.chat_id,
-            message.chat.id,
-        )
+        try:
+            await message.answer_guest_query(result)
+        except TelegramBadRequest as error:
+            logger.warning(
+                "GUEST_STREAK_RICH_REJECTED connection=%s chat=%s error=%s",
+                request.business_connection_id,
+                request.chat_id,
+                error,
+            )
+            fallback = InlineQueryResultArticle(
+                id=f"streak-text-{token}",
+                title="حالة الستريك",
+                input_message_content=InputTextMessageContent(
+                    message_text=(
+                        "🔥 حالة الستريك\n\n"
+                        f"الستريك الحالي: {streak.current_streak}\n"
+                        f"أطول ستريك: {streak.longest_streak}\n"
+                        f"إجمالي أيام الستريك: {streak.completed_days}\n"
+                        f"عدد مرات انقطاع الستريك: {streak.break_count}\n"
+                        f"رصيد الحماية: {streak.freeze_count} 🧊\n"
+                        "آخر يوم تم احتسابه ضمن الستريك: "
+                        f"{streak.last_completed_day or 'لا يوجد'}"
+                    ),
+                ),
+            )
+            await message.answer_guest_query(fallback)
+        else:
+            logger.info(
+                "GUEST_STREAK_RICH_SENT connection=%s chat=%s guest_chat=%s",
+                request.business_connection_id,
+                request.chat_id,
+                message.chat.id,
+            )
 
         if request.summon_message_id is not None:
             with suppress(TelegramBadRequest, TelegramForbiddenError):
