@@ -481,7 +481,7 @@ class Repository:
             connections = int((await cursor.fetchone())["c"])
             cursor = await db.execute(
                 """
-                SELECT COUNT(*) AS chats,
+                SELECT COALESCE(SUM(s.is_enabled), 0) AS chats,
                        COALESCE(MAX(current_streak), 0) AS highest_current,
                        COALESCE(MAX(longest_streak), 0) AS highest_ever,
                        COALESCE(SUM(completed_days), 0) AS completed_days,
@@ -494,6 +494,17 @@ class Repository:
                 (owner_user_id,),
             )
             row = await cursor.fetchone()
+            best_cursor = await db.execute(
+                """
+                SELECT s.chat_id FROM streaks AS s
+                JOIN business_connections AS b
+                  ON b.business_connection_id=s.business_connection_id
+                WHERE b.owner_user_id=? AND b.is_enabled=1
+                ORDER BY s.longest_streak DESC, s.completed_days DESC LIMIT 1
+                """,
+                (owner_user_id,),
+            )
+            best = await best_cursor.fetchone()
             return {
                 "connections": connections,
                 "chats": int(row["chats"]),
@@ -501,6 +512,7 @@ class Repository:
                 "highest_ever": int(row["highest_ever"]),
                 "completed_days": int(row["completed_days"]),
                 "freezes_used": int(row["freezes_used"]),
+                "best_chat_id": int(best["chat_id"]) if best else 0,
             }
 
     async def list_owner_streaks(self, owner_user_id: int) -> list[StreakRecord]:
