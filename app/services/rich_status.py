@@ -56,7 +56,7 @@ def build_streak_rich_message(
         if break_count > 0
         else ""
     )
-    midnight_unix = end_of_day_unix(timezone_name)
+    remaining = remaining_day_text(timezone_name)
     return InputRichMessage(
         html=(
             "<h1>🔥 حالة الستريك</h1>"
@@ -69,12 +69,9 @@ def build_streak_rich_message(
             f"الحماية المتاحة: <b>{protection_text(freeze_count)}</b><br>"
             f"آخر يوم ناجح: <b>{last_day}</b>"
             "</p></details>"
-            "<tg-button-row align=\"center\">"
-            "<tg-button type=\"disabled\" style=\"primary\">"
-            "⏳ ينتهي اليوم "
-            f"<tg-time unix=\"{midnight_unix}\" format=\"r\">قريبًا</tg-time>"
-            "</tg-button>"
-            "</tg-button-row>"
+            "<p>"
+            f"<tg-button type=\"disabled\">⏳ {remaining}</tg-button>"
+            "</p>"
         ),
         is_rtl=True,
     )
