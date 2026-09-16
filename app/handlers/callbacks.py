@@ -14,28 +14,35 @@ from app.handlers.private import dashboard_keyboard
 def _chat_keyboard(streak: StreakRecord) -> InlineKeyboardMarkup:
     enabled = "تعطيل" if streak.is_enabled else "تفعيل"
     notices = "كتم التنبيهات" if streak.notifications_enabled else "تشغيل التنبيهات"
-    freeze = "Freeze تلقائي ✅" if streak.auto_freeze else "Freeze تلقائي ❌"
+    freeze = "الحماية التلقائية ✅" if streak.auto_freeze else "الحماية التلقائية ❌"
     chat = streak.chat_id
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🔥 {enabled}", callback_data=f"chat:enabled:{chat}")],
         [InlineKeyboardButton(text=f"🔔 {notices}", callback_data=f"chat:notifications:{chat}")],
         [InlineKeyboardButton(text=f"🧊 {freeze}", callback_data=f"chat:auto_freeze:{chat}")],
-        [InlineKeyboardButton(text="♻️ Reset", callback_data=f"chat:reset:{chat}")],
+        [InlineKeyboardButton(text="♻️ تصفير الستريك", callback_data=f"chat:reset:{chat}")],
         [InlineKeyboardButton(text="رجوع", callback_data="dash:chats")],
     ])
 
 
 def _details(streak: StreakRecord) -> str:
-    return (
-        f"🔥 تفاصيل المحادثة {streak.chat_id}\n\n"
-        f"Current streak: {streak.current_streak}\n"
-        f"Longest streak: {streak.longest_streak}\n"
-        f"Completed days: {streak.completed_days}\n"
-        f"Breaks: {streak.break_count}\n"
-        f"Freeze: {streak.freeze_count}\n"
-        f"Freeze used: {streak.freezes_used}\n"
-        f"Started: {streak.created_at[:10]}"
+    lines = [
+        f"🔥 تفاصيل المحادثة {streak.chat_id}",
+        "",
+        f"الستريك الحالي: {streak.current_streak}",
+        f"أطول ستريك: {streak.longest_streak}",
+        f"إجمالي أيام الستريك: {streak.completed_days}",
+    ]
+    if streak.break_count > 0:
+        lines.append(f"مرات الانقطاع: {streak.break_count}")
+    lines.extend(
+        [
+            f"الحماية المتاحة: {streak.freeze_count}",
+            f"مرات استخدام الحماية: {streak.freezes_used}",
+            f"بدأ التتبع: {streak.created_at[:10]}",
+        ]
     )
+    return "\n".join(lines)
 
 
 def build_router(repository: Repository) -> Router:
@@ -49,7 +56,7 @@ def build_router(repository: Repository) -> Router:
 
         connection_id = getattr(callback.message, "business_connection_id", None)
         if not connection_id:
-            await callback.answer("تعذر تحديد اتصال Business.", show_alert=True)
+            await callback.answer("تعذر تحديد اتصال الأعمال.", show_alert=True)
             return
 
         chat_id = callback.message.chat.id
@@ -100,7 +107,7 @@ def build_router(repository: Repository) -> Router:
             f"أعلى تاريخي: {values['highest_ever']}\n"
             f"المحادثات: {values['chats']}\n"
             f"الأيام المكتملة: {values['completed_days']}\n"
-            f"Freezes المستخدمة: {values['freezes_used']}\n"
+            f"مرات استخدام الحماية: {values['freezes_used']}\n"
             f"أفضل محادثة: {values['best_chat_id'] or 'لا توجد'}",
             reply_markup=dashboard_keyboard(),
         )
