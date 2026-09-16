@@ -42,7 +42,7 @@ def build_router(repository: Repository, stickers: StickerService | None = None)
         stats = await repository.dashboard_stats(message.from_user.id)
         await message.answer(
             "📊 الإحصائيات\n\n"
-            f"أعلى Streak حالي: {stats['highest_current']}\n"
+            f"أعلى ستريك حالي: {stats['highest_current']}\n"
             f"أعلى ستريك بالتاريخ: {stats['highest_ever']}\n"
             f"المحادثات النشطة: {stats['chats']}\n"
             f"الأيام المكتملة: {stats['completed_days']}\n"
