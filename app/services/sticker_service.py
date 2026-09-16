@@ -57,6 +57,9 @@ class StickerService:
         chat_id: int,
         current: int,
         longest: int,
+        completed_days: int,
+        break_count: int,
+        freeze_count: int,
         last_completed_day: str | None,
     ) -> None:
         last_day = last_completed_day or "لا يوجد"
@@ -67,6 +70,9 @@ class StickerService:
                 "🔥 حالة الستريك\n"
                 f"الحالي: {current}\n"
                 f"الأعلى: {longest}\n"
+                f"الأيام المكتملة: {completed_days}\n"
+                f"مرات الانقطاع: {break_count}\n"
+                f"رصيد التجميد: {freeze_count} 🧊\n"
                 f"آخر يوم مكتمل: {last_day}"
             ),
         )
