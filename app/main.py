@@ -42,6 +42,9 @@ async def main() -> None:
         repository,
         renderer,
         settings.ready_stickers_dir,
+        message_effect_id=settings.message_effect_id,
+        sticker_set_owner_id=settings.sticker_set_owner_id,
+        sticker_set_title=settings.sticker_set_title,
     )
 
     dp.include_router(errors_router())
