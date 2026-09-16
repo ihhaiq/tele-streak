@@ -16,6 +16,7 @@ from aiogram.types import FSInputFile, Message
 
 from app.database.repository import Repository
 from app.keyboards.streak import streak_keyboard
+from app.services.sticker_pack import StickerPack
 
 logger = logging.getLogger(__name__)
 MAX_SEND_ATTEMPTS = 3
@@ -44,11 +45,22 @@ class StickerService:
         repository: Repository,
         renderer: Renderer,
         ready_stickers_dir: Path,
+        *,
+        message_effect_id: str | None = None,
+        sticker_set_owner_id: int | None = None,
+        sticker_set_title: str = "Jake Streak",
     ):
         self.bot = bot
         self.repository = repository
         self.renderer = renderer
         self.ready_stickers_dir = ready_stickers_dir
+        self.message_effect_id = message_effect_id
+        self.pack = StickerPack(
+            bot,
+            ready_stickers_dir,
+            owner_id=sticker_set_owner_id,
+            title=sticker_set_title,
+        )
 
     async def send_status(
         self,
@@ -63,7 +75,7 @@ class StickerService:
         last_completed_day: str | None,
     ) -> None:
         last_day = last_completed_day or "لا يوجد"
-        await self.bot.send_message(
+        kwargs = dict(
             chat_id=chat_id,
             business_connection_id=connection_id,
             text=(
@@ -76,6 +88,42 @@ class StickerService:
                 f"آخر يوم مكتمل: {last_day}"
             ),
         )
+        try:
+            await self.bot.send_message(
+                **kwargs,
+                message_effect_id=self.message_effect_id,
+            )
+        except TelegramBadRequest as error:
+            if not self.message_effect_id:
+                raise
+            logger.warning("Message effect rejected; sending status without it: %s", error)
+            await self.bot.send_message(**kwargs)
+
+    async def _send_sticker_once(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        sticker: str | FSInputFile,
+        days: int | None,
+        with_effect: bool,
+    ) -> Message:
+        kwargs = dict(
+            chat_id=chat_id,
+            sticker=sticker,
+            business_connection_id=connection_id,
+            reply_markup=streak_keyboard(days) if days else None,
+        )
+        try:
+            return await self.bot.send_sticker(
+                **kwargs,
+                message_effect_id=self.message_effect_id if with_effect else None,
+            )
+        except TelegramBadRequest as error:
+            if not (with_effect and self.message_effect_id):
+                raise
+            logger.warning("Message effect rejected; sending sticker without it: %s", error)
+            return await self.bot.send_sticker(**kwargs)
 
     async def _send_sticker(
         self,
@@ -84,14 +132,16 @@ class StickerService:
         chat_id: int,
         sticker: str | FSInputFile,
         days: int | None,
+        with_effect: bool = False,
     ) -> Message:
         for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
             try:
-                return await self.bot.send_sticker(
+                return await self._send_sticker_once(
+                    connection_id=connection_id,
                     chat_id=chat_id,
                     sticker=sticker,
-                    business_connection_id=connection_id,
-                    reply_markup=streak_keyboard(days) if days else None,
+                    days=days,
+                    with_effect=with_effect,
                 )
             except TelegramRetryAfter as error:
                 if attempt == MAX_SEND_ATTEMPTS:
@@ -152,26 +202,42 @@ class StickerService:
         pose: str,
         days: int,
     ) -> None:
+        sent: Message | None = None
+
+        try:
+            pack_file_id = await self.pack.file_id(connection_id, days)
+            if pack_file_id:
+                sent = await self._send_sticker(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    sticker=pack_file_id,
+                    days=days,
+                    with_effect=True,
+                )
+        except Exception:
+            logger.exception(
+                "Sticker pack unavailable; falling back to direct upload: days=%s",
+                days,
+            )
+
         sticker_key = f"streak:{days}"
         cached_file_id = await self.repository.get_sticker_file_id(sticker_key)
-
-        sent: Message
-        if cached_file_id:
+        if sent is None and cached_file_id:
             try:
                 sent = await self._send_sticker(
                     connection_id=connection_id,
                     chat_id=chat_id,
                     sticker=cached_file_id,
                     days=days,
+                    with_effect=True,
                 )
             except TelegramBadRequest:
                 logger.warning(
                     "Cached sticker file_id rejected; uploading again: key=%s",
                     sticker_key,
                 )
-                cached_file_id = None
 
-        if not cached_file_id:
+        if sent is None:
             path = resolve_sticker_path(
                 self.ready_stickers_dir,
                 self.renderer,
@@ -183,6 +249,7 @@ class StickerService:
                 chat_id=chat_id,
                 sticker=FSInputFile(path),
                 days=days,
+                with_effect=True,
             )
             if sent.sticker:
                 await self.repository.set_sticker_file_id(
