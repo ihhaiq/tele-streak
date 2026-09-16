@@ -62,6 +62,19 @@ class StickerService:
             title=sticker_set_title,
         )
 
+    async def send_notice_text(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        text: str,
+    ) -> None:
+        await self.bot.send_message(
+            chat_id=chat_id,
+            business_connection_id=connection_id,
+            text=text,
+        )
+
     async def send_status(
         self,
         *,
@@ -163,6 +176,21 @@ class StickerService:
         if name not in {"warning", "broken"}:
             raise ValueError("unknown special sticker")
         sticker_key = f"special:{name}"
+        try:
+            pack_file_id = await self.pack.special_file_id(connection_id, name)
+            if pack_file_id:
+                await self._send_sticker(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    sticker=pack_file_id,
+                    days=None,
+                )
+                return
+        except Exception:
+            logger.exception(
+                "Special sticker pack unavailable; using direct upload: name=%s",
+                name,
+            )
         cached_file_id = await self.repository.get_sticker_file_id(sticker_key)
         sent: Message | None = None
 
