@@ -70,11 +70,10 @@ def build_router(
             await callback.answer("هذا الطلب ليس لك.", show_alert=True)
             return
 
-        existing = await repository.get_streak(
+        if await activations.is_active(
             request.business_connection_id,
             request.chat_id,
-        )
-        if existing is not None:
+        ):
             await activations.finish_request(token)
             if callback.message is not None:
                 with suppress(TelegramBadRequest):
