@@ -18,6 +18,7 @@ from app.handlers.callbacks import build_router as callbacks_router
 from app.handlers.connection import build_router as connection_router
 from app.handlers.errors import build_router as errors_router
 from app.handlers.guest import build_router as guest_router
+from app.handlers.guest_broken_notice import build_router as guest_broken_notice_router
 from app.handlers.guest_callbacks import build_router as guest_callbacks_router
 from app.handlers.private import build_router as private_router
 from app.handlers.streak_test import build_router as streak_test_router
@@ -71,6 +72,7 @@ async def main() -> None:
     dp.include_router(
         business_router(streaks, stickers, repository, activations, guests)
     )
+    dp.include_router(guest_broken_notice_router(repository))
     dp.include_router(guest_router(repository, stickers, revive_requests))
     dp.include_router(guest_callbacks_router(repository, revive_requests))
     dp.include_router(callbacks_router(repository, activations, streaks))

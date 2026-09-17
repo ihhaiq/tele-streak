@@ -77,7 +77,7 @@ def test_scheduler_sends_warning_through_guest_mode():
     assert stickers.notices == []
 
 
-def test_broken_streak_is_sent_through_guest_mode_without_revive_button():
+def test_broken_streak_sends_sticker_and_guidance_through_guest_mode():
     class BrokenRepository(FakeRepository):
         async def process_missed_day(self, **kwargs):
             return "broken"
@@ -102,9 +102,17 @@ def test_broken_streak_is_sent_through_guest_mode_without_revive_button():
 
     asyncio.run(scheduler.run_once())
 
-    assert guests.events == [{
-        "event": "broken",
-        "connection_id": "bc-1",
-        "chat_id": 20,
-    }]
+    assert guests.events == [
+        {
+            "event": "broken",
+            "connection_id": "bc-1",
+            "chat_id": 20,
+        },
+        {
+            "event": "broken_notice",
+            "connection_id": "bc-1",
+            "chat_id": 20,
+        },
+    ]
     assert stickers.special == []
+    assert stickers.notices == []

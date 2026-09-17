@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.database.repository import Repository
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.sticker_service import StickerService
+from app.services.streak_messages import BROKEN_NOTICE_TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -121,23 +122,37 @@ class StreakScheduler:
                     day_before_missed=day_before,
                 )
                 if result == "broken":
-                    sent = await self.guests.summon(
+                    sticker_sent = await self.guests.summon(
                         event="broken",
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
                     )
-                    if not sent:
+                    if not sticker_sent:
                         await self.stickers.send_special(
                             connection_id=streak.business_connection_id,
                             chat_id=streak.chat_id,
                             name="broken",
                             revive_available=False,
                         )
+
+                    notice_sent = await self.guests.summon(
+                        event="broken_notice",
+                        connection_id=streak.business_connection_id,
+                        chat_id=streak.chat_id,
+                    )
+                    if not notice_sent:
+                        await self.stickers.send_notice_text(
+                            connection_id=streak.business_connection_id,
+                            chat_id=streak.chat_id,
+                            text=BROKEN_NOTICE_TEXT,
+                        )
+
                     logger.info(
-                        "STREAK_BROKEN connection=%s chat=%s guest=%s",
+                        "STREAK_BROKEN connection=%s chat=%s guest_sticker=%s guest_notice=%s",
                         streak.business_connection_id,
                         streak.chat_id,
-                        sent,
+                        sticker_sent,
+                        notice_sent,
                     )
                 elif result == "frozen":
                     logger.info(
