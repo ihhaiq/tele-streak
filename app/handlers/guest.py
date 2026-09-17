@@ -19,6 +19,7 @@ from aiogram.types import (
 
 from app.database.revive_request_repository import ReviveApprovalState, ReviveRequestRepository
 from app.database.repository import GuestStreakRequest, Repository
+from app.keyboards.streak import streak_keyboard
 from app.services.rich_status import build_streak_fallback_text, build_streak_rich_message
 from app.services.sticker_service import StickerService
 
@@ -63,10 +64,12 @@ def _revive_keyboard(token: str) -> InlineKeyboardMarkup:
 
 
 async def _cleanup_summon(message: Message, request: GuestStreakRequest) -> None:
+    if request.summon_message_id is None:
+        return
     await message.bot.delete_business_messages(
         business_connection_id=request.business_connection_id,
         message_ids=[request.summon_message_id],
-    ) if request.summon_message_id is not None else None
+    )
 
 
 async def _numbered_sticker_id(
@@ -76,6 +79,11 @@ async def _numbered_sticker_id(
     connection_id: str,
     days: int,
 ) -> str | None:
+    key = f"streak:{days}"
+    cached = await repository.get_sticker_file_id(key)
+    if cached:
+        return cached
+
     pack_id = stickers.pack.cached_file_id(str(days))
     if pack_id is None:
         try:
@@ -88,7 +96,7 @@ async def _numbered_sticker_id(
             )
             return None
     if pack_id:
-        await repository.set_sticker_file_id(f"streak:{days}", pack_id)
+        await repository.set_sticker_file_id(key, pack_id)
     return pack_id
 
 
@@ -99,6 +107,11 @@ async def _special_sticker_id(
     connection_id: str,
     name: str,
 ) -> str | None:
+    key = f"special:{name}"
+    cached = await repository.get_sticker_file_id(key)
+    if cached:
+        return cached
+
     pack_id = stickers.pack.cached_file_id(name)
     if pack_id is None:
         try:
@@ -111,7 +124,7 @@ async def _special_sticker_id(
             )
             return None
     if pack_id:
-        await repository.set_sticker_file_id(f"special:{name}", pack_id)
+        await repository.set_sticker_file_id(key, pack_id)
     return pack_id
 
 
@@ -213,6 +226,7 @@ def build_router(
                     InlineQueryResultCachedSticker(
                         id=f"streak-success-{token}",
                         sticker_file_id=file_id,
+                        reply_markup=streak_keyboard(streak.current_streak),
                     )
                     if file_id
                     else InlineQueryResultArticle(
