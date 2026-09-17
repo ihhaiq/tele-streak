@@ -4,7 +4,7 @@ from app.services.broken_animation import BrokenAnimationService
 from app.services.streak_messages import build_broken_notice_rich_message
 
 
-def test_broken_gif_is_one_second_and_remains_gif(tmp_path):
+def test_broken_gif_is_real_two_frame_one_second_animation(tmp_path):
     source = tmp_path / "broken.webp"
     destination = tmp_path / "broken.gif"
     Image.new("RGBA", (32, 32), (255, 80, 80, 255)).save(source, format="WEBP")
@@ -13,10 +13,11 @@ def test_broken_gif_is_one_second_and_remains_gif(tmp_path):
 
     with Image.open(destination) as animation:
         assert animation.format == "GIF"
-        durations = [
-            frame.info.get("duration", 0)
-            for frame in ImageSequence.Iterator(animation)
-        ]
+        frames = list(ImageSequence.Iterator(animation))
+        durations = [frame.info.get("duration", 0) for frame in frames]
+        assert animation.n_frames == 2
+        assert len(frames) == 2
+        assert durations == [500, 500]
         assert sum(durations) == 1000
 
 
