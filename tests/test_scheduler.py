@@ -1,6 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
-
 import asyncio
 
 from app.database.repository import StreakRecord
@@ -30,12 +28,6 @@ class FakeStickers:
     def __init__(self):
         self.special = []
         self.notices = []
-        self.broken_notices = []
-
-    async def send_broken_notice(self, **kwargs):
-        self.broken_notices.append(kwargs)
-        return SimpleNamespace(message_id=777)
-
     async def send_special(self, **kwargs):
         self.special.append(kwargs)
 
@@ -83,7 +75,7 @@ def test_scheduler_sends_warning_through_guest_mode():
     assert stickers.notices == []
 
 
-def test_broken_streak_sends_rich_notice_then_guest_sticker_reply():
+def test_broken_streak_starts_guest_only_broken_flow():
     class BrokenRepository(FakeRepository):
         async def process_missed_day(self, **kwargs):
             return "broken"
@@ -108,25 +100,18 @@ def test_broken_streak_sends_rich_notice_then_guest_sticker_reply():
 
     asyncio.run(scheduler.run_once())
 
-    assert stickers.broken_notices == [
-        {
-            "connection_id": "bc-1",
-            "chat_id": 20,
-        }
-    ]
     assert guests.events == [
         {
-            "event": "broken",
+            "event": "broken_notice",
             "connection_id": "bc-1",
             "chat_id": 20,
-            "reply_to_message_id": 777,
         },
     ]
     assert stickers.special == []
     assert stickers.notices == []
 
 
-def test_broken_streak_falls_back_to_sticker_and_text_if_guest_fails():
+def test_broken_streak_does_not_send_business_fallback_if_guest_is_unavailable():
     class BrokenRepository(FakeRepository):
         async def process_missed_day(self, **kwargs):
             return "broken"
@@ -151,22 +136,13 @@ def test_broken_streak_falls_back_to_sticker_and_text_if_guest_fails():
 
     asyncio.run(scheduler.run_once())
 
-    assert stickers.broken_notices == [
-        {
-            "connection_id": "bc-1",
-            "chat_id": 20,
-        }
-    ]
     assert guests.events == [
         {
-            "event": "broken",
+            "event": "broken_notice",
             "connection_id": "bc-1",
             "chat_id": 20,
-            "reply_to_message_id": 777,
         },
     ]
-    assert len(stickers.special) == 1
-    assert stickers.special[0]["name"] == "broken"
-    assert stickers.special[0]["revive_available"] is False
-    assert stickers.special[0]["reply_to_message_id"] == 777
+    assert stickers.special == []
     assert stickers.notices == []
+
