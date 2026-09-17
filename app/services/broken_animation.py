@@ -14,6 +14,8 @@ from app.database.repository import Repository
 
 logger = logging.getLogger(__name__)
 
+GIF_RENDER_VERSION = "v2"
+
 
 class BrokenAnimationService:
     """Build and cache the one-second GIF used in the broken-streak rich message."""
@@ -35,16 +37,53 @@ class BrokenAnimationService:
         return hashlib.sha256(self.source_path.read_bytes()).hexdigest()[:16]
 
     @staticmethod
+    def _make_distinct_second_frame(frame: Image.Image) -> Image.Image:
+        """Keep the image visually static while forcing a real second GIF frame.
+
+        Pillow collapses byte-identical frames into one frame, which Telegram can
+        treat as a static image instead of an animation. Change one visible pixel
+        only; the difference is imperceptible at sticker scale but keeps two real
+        frames in the encoded GIF.
+        """
+        second = frame.copy()
+        pixels = second.load()
+        width, height = second.size
+
+        target: tuple[int, int] | None = None
+        for y in range(height):
+            for x in range(width):
+                red, green, blue, alpha = pixels[x, y]
+                if alpha > 0:
+                    target = (x, y)
+                    break
+            if target is not None:
+                break
+
+        if target is None:
+            target = (0, 0)
+
+        x, y = target
+        red, green, blue, alpha = pixels[x, y]
+        pixels[x, y] = (
+            255 - red,
+            255 - green,
+            255 - blue,
+            max(alpha, 1),
+        )
+        return second
+
+    @staticmethod
     def render_one_second_gif(source: Path, destination: Path) -> Path:
-        """Convert a static source image into a visually static one-second GIF."""
+        """Convert the static source into a visually static, real two-frame GIF."""
         destination.parent.mkdir(parents=True, exist_ok=True)
         with Image.open(source) as image:
-            frame = image.convert("RGBA")
-            frame.save(
+            first = image.convert("RGBA")
+            second = BrokenAnimationService._make_distinct_second_frame(first)
+            first.save(
                 destination,
                 format="GIF",
                 save_all=True,
-                append_images=[frame.copy()],
+                append_images=[second],
                 duration=[500, 500],
                 loop=0,
                 disposal=2,
@@ -61,12 +100,14 @@ class BrokenAnimationService:
                 logger.exception("BROKEN_GIF_SOURCE_UNAVAILABLE path=%s", self.source_path)
                 return None
 
-            cache_key = f"animation:broken_notice:{digest}"
+            # Include the renderer version so a previously cached one-frame GIF
+            # can never mask a renderer fix.
+            cache_key = f"animation:broken_notice:{GIF_RENDER_VERSION}:{digest}"
             cached = await self.repository.get_sticker_file_id(cache_key)
             if cached:
                 return cached
 
-            destination = self.output_dir / f"broken_notice_{digest}.gif"
+            destination = self.output_dir / f"broken_notice_{GIF_RENDER_VERSION}_{digest}.gif"
             try:
                 if not destination.exists():
                     await asyncio.to_thread(
@@ -88,6 +129,7 @@ class BrokenAnimationService:
                     chat_id=chat_id,
                     business_connection_id=connection_id,
                     animation=FSInputFile(destination, filename="broken_streak.gif"),
+                    duration=1,
                     disable_notification=True,
                 )
                 temporary_message_id = sent.message_id
@@ -100,6 +142,13 @@ class BrokenAnimationService:
                     return None
                 file_id = sent.animation.file_id
                 await self.repository.set_sticker_file_id(cache_key, file_id)
+                logger.info(
+                    "BROKEN_GIF_READY connection=%s chat=%s file_unique_id=%s duration=%s",
+                    connection_id,
+                    chat_id,
+                    sent.animation.file_unique_id,
+                    sent.animation.duration,
+                )
                 return file_id
             except Exception:
                 logger.exception(
