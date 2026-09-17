@@ -12,11 +12,12 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
     TelegramServerError,
 )
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, Message
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, Message, ReplyParameters
 
 from app.database.repository import Repository
 from app.keyboards.streak import revive_streak_keyboard, streak_keyboard
 from app.services.rich_status import build_streak_fallback_text, build_streak_rich_message
+from app.services.streak_messages import BROKEN_NOTICE_TEXT, build_broken_notice_rich_message
 from app.services.sticker_pack import StickerPack
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,26 @@ class StickerService:
             business_connection_id=connection_id,
             text=text,
         )
+
+    async def send_broken_notice(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+    ) -> Message:
+        try:
+            return await self.bot.send_rich_message(
+                chat_id=chat_id,
+                business_connection_id=connection_id,
+                rich_message=build_broken_notice_rich_message(),
+            )
+        except TelegramBadRequest as error:
+            logger.warning("BROKEN_NOTICE_RICH_REJECTED error=%s", error)
+            return await self.bot.send_message(
+                chat_id=chat_id,
+                business_connection_id=connection_id,
+                text=BROKEN_NOTICE_TEXT,
+            )
 
     async def prepare_pack_for_owner(self, owner_id: int) -> None:
         """Synchronize the complete pack for an explicitly selected owner."""
@@ -156,12 +177,18 @@ class StickerService:
         days: int | None,
         with_effect: bool,
         reply_markup: InlineKeyboardMarkup | None = None,
+        reply_to_message_id: int | None = None,
     ) -> Message:
         kwargs = dict(
             chat_id=chat_id,
             sticker=sticker,
             business_connection_id=connection_id,
             reply_markup=reply_markup or (streak_keyboard(days) if days else None),
+            reply_parameters=(
+                ReplyParameters(message_id=reply_to_message_id)
+                if reply_to_message_id is not None
+                else None
+            ),
         )
         try:
             return await self.bot.send_sticker(
@@ -183,6 +210,7 @@ class StickerService:
         days: int | None,
         with_effect: bool = False,
         reply_markup: InlineKeyboardMarkup | None = None,
+        reply_to_message_id: int | None = None,
     ) -> Message:
         for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
             try:
@@ -193,6 +221,7 @@ class StickerService:
                     days=days,
                     with_effect=with_effect,
                     reply_markup=reply_markup,
+                    reply_to_message_id=reply_to_message_id,
                 )
             except TelegramRetryAfter as error:
                 if attempt == MAX_SEND_ATTEMPTS:
@@ -211,6 +240,7 @@ class StickerService:
         chat_id: int,
         name: str,
         revive_available: bool = False,
+        reply_to_message_id: int | None = None,
     ) -> None:
         if name not in {"warning", "broken"}:
             raise ValueError("unknown special sticker")
@@ -228,6 +258,7 @@ class StickerService:
                 sticker=pack_file_id,
                 days=None,
                 reply_markup=reply_markup,
+                reply_to_message_id=reply_to_message_id,
             )
             return
         self.pack.start_sync(connection_id)
@@ -242,6 +273,7 @@ class StickerService:
                     sticker=cached_file_id,
                     days=None,
                     reply_markup=reply_markup,
+                    reply_to_message_id=reply_to_message_id,
                 )
             except TelegramBadRequest:
                 logger.warning(
@@ -257,6 +289,7 @@ class StickerService:
                 sticker=FSInputFile(path),
                 days=None,
                 reply_markup=reply_markup,
+                reply_to_message_id=reply_to_message_id,
             )
             if sent.sticker:
                 await self.repository.set_sticker_file_id(
