@@ -122,25 +122,18 @@ class StreakScheduler:
                     day_before_missed=day_before,
                 )
                 if result == "broken":
-                    sticker_sent = await self.guests.summon(
-                        event="broken",
-                        connection_id=streak.business_connection_id,
-                        chat_id=streak.chat_id,
-                    )
-                    if not sticker_sent:
-                        await self.stickers.send_special(
-                            connection_id=streak.business_connection_id,
-                            chat_id=streak.chat_id,
-                            name="broken",
-                            revive_available=False,
-                        )
-
                     notice_sent = await self.guests.summon(
                         event="broken_notice",
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
                     )
                     if not notice_sent:
+                        await self.stickers.send_special(
+                            connection_id=streak.business_connection_id,
+                            chat_id=streak.chat_id,
+                            name="broken",
+                            revive_available=False,
+                        )
                         await self.stickers.send_notice_text(
                             connection_id=streak.business_connection_id,
                             chat_id=streak.chat_id,
@@ -148,10 +141,9 @@ class StreakScheduler:
                         )
 
                     logger.info(
-                        "STREAK_BROKEN connection=%s chat=%s guest_sticker=%s guest_notice=%s",
+                        "STREAK_BROKEN connection=%s chat=%s guest_rich_notice=%s",
                         streak.business_connection_id,
                         streak.chat_id,
-                        sticker_sent,
                         notice_sent,
                     )
                 elif result == "frozen":
