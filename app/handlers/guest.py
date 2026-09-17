@@ -20,12 +20,14 @@ from aiogram.types import (
 from app.database.revive_request_repository import ReviveApprovalState, ReviveRequestRepository
 from app.database.repository import GuestStreakRequest, Repository
 from app.keyboards.streak import streak_keyboard
+from app.services.guest_delivery import GuestDeliveryService
 from app.services.rich_status import build_streak_fallback_text, build_streak_rich_message
 from app.services.sticker_service import StickerService
+from app.services.streak_messages import BROKEN_NOTICE_TEXT, build_broken_notice_rich_message
 
 logger = logging.getLogger(__name__)
 TOKEN_RE = re.compile(
-    r"(?:^|\s)streak:(status|success|warning_sticker|warning_notice|broken|revive):"
+    r"(?:^|\s)streak:(status|success|warning_sticker|warning_notice|broken_notice|broken|revive):"
     r"([A-Za-z0-9_-]{8,32})(?:\s|$)"
 )
 
@@ -149,6 +151,7 @@ def build_router(
     repository: Repository,
     stickers: StickerService,
     revive_requests: ReviveRequestRepository,
+    guests: GuestDeliveryService,
 ) -> Router:
     router = Router(name="guest_messages")
 
@@ -268,6 +271,14 @@ def build_router(
                     )
                 ),
             )
+        elif event == "broken_notice":
+            result = InlineQueryResultArticle(
+                id=f"streak-broken-notice-{token}",
+                title="انقطع الستريك",
+                input_message_content=InputRichMessageContent(
+                    rich_message=build_broken_notice_rich_message(),
+                ),
+            )
         elif event == "broken":
             file_id = await _special_sticker_id(
                 stickers,
@@ -315,7 +326,22 @@ def build_router(
         try:
             await message.answer_guest_query(result)
         except TelegramBadRequest as error:
-            if event == "status" and streak is not None:
+            if event == "broken_notice":
+                logger.warning(
+                    "STREAK_GUEST_BROKEN_RICH_REJECTED connection=%s chat=%s error=%s",
+                    request.business_connection_id,
+                    request.chat_id,
+                    error,
+                )
+                fallback = InlineQueryResultArticle(
+                    id=f"streak-broken-notice-text-{token}",
+                    title="انقطع الستريك",
+                    input_message_content=InputTextMessageContent(
+                        message_text=BROKEN_NOTICE_TEXT,
+                    ),
+                )
+                await message.answer_guest_query(fallback)
+            elif event == "status" and streak is not None:
                 logger.warning(
                     "STREAK_GUEST_RICH_REJECTED connection=%s chat=%s error=%s",
                     request.business_connection_id,
@@ -357,6 +383,20 @@ def build_router(
                 logger.info(
                     "STREAK_GUEST_SENT event=%s connection=%s chat=%s",
                     event,
+                    request.business_connection_id,
+                    request.chat_id,
+                )
+
+        if event == "broken_notice":
+            sticker_invoked = await guests.summon(
+                event="broken",
+                connection_id=request.business_connection_id,
+                chat_id=request.chat_id,
+                ttl_seconds=60,
+            )
+            if not sticker_invoked:
+                logger.error(
+                    "STREAK_GUEST_BROKEN_STICKER_INVOKE_FAILED connection=%s chat=%s",
                     request.business_connection_id,
                     request.chat_id,
                 )

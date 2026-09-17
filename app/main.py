@@ -70,7 +70,7 @@ async def main() -> None:
     dp.include_router(
         business_router(streaks, stickers, repository, activations, guests)
     )
-    dp.include_router(guest_router(repository, stickers, revive_requests))
+    dp.include_router(guest_router(repository, stickers, revive_requests, guests))
     dp.include_router(guest_callbacks_router(repository, revive_requests))
     dp.include_router(callbacks_router(repository, activations, streaks))
     dp.include_router(private_router(repository, stickers))
