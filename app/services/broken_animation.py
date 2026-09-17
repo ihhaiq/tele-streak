@@ -53,7 +53,7 @@ class BrokenAnimationService:
         return destination
 
     async def ensure_file_id(self, connection_id: str, chat_id: int) -> str | None:
-        """Return a Telegram animation file_id, uploading a hidden temporary GIF once."""
+        """Return a Telegram animation file_id, uploading a temporary GIF once."""
         async with self._lock:
             try:
                 digest = self._source_digest()
@@ -101,7 +101,7 @@ class BrokenAnimationService:
                 file_id = sent.animation.file_id
                 await self.repository.set_sticker_file_id(cache_key, file_id)
                 return file_id
-            except (TelegramBadRequest, TelegramForbiddenError):
+            except Exception:
                 logger.exception(
                     "BROKEN_GIF_UPLOAD_FAILED connection=%s chat=%s",
                     connection_id,
