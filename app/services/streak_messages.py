@@ -1,13 +1,11 @@
 from aiogram.types import (
-    InputMediaAnimation,
-    InputRichBlockAnimation,
     InputRichBlockDivider,
     InputRichBlockParagraph,
     InputRichBlockSectionHeading,
     InputRichMessage,
 )
 
-BROKEN_NOTICE_TITLE = "💔 الستريك مات"
+BROKEN_NOTICE_TITLE = "الستريك مات ونحن من قتلناه"
 BROKEN_NOTICE_PARAGRAPHS = (
     "ما كملتوا شرط اليوم، ولهذا انقطع الستريك.",
     (
@@ -27,19 +25,15 @@ BROKEN_NOTICE_TEXT = (
 )
 
 
-def build_broken_notice_rich_message(animation_file_id: str | None) -> InputRichMessage:
-    blocks = [
-        InputRichBlockSectionHeading(text=BROKEN_NOTICE_TITLE, size=1),
-        InputRichBlockDivider(),
-    ]
-    if animation_file_id:
-        blocks.append(
-            InputRichBlockAnimation(
-                animation=InputMediaAnimation(media=animation_file_id),
-            )
-        )
-    blocks.extend(
-        InputRichBlockParagraph(text=paragraph)
-        for paragraph in BROKEN_NOTICE_PARAGRAPHS
+def build_broken_notice_rich_message() -> InputRichMessage:
+    return InputRichMessage(
+        blocks=[
+            InputRichBlockSectionHeading(text=BROKEN_NOTICE_TITLE, size=1),
+            InputRichBlockDivider(),
+            *(
+                InputRichBlockParagraph(text=paragraph)
+                for paragraph in BROKEN_NOTICE_PARAGRAPHS
+            ),
+        ],
+        is_rtl=True,
     )
-    return InputRichMessage(blocks=blocks, is_rtl=True)
