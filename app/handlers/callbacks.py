@@ -7,9 +7,11 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
+from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository, StreakRecord
 from app.handlers.private import dashboard_keyboard
 from app.services.rich_status import protection_text
+from app.services.streak_service import StreakService
 
 
 def _chat_keyboard(streak: StreakRecord) -> InlineKeyboardMarkup:
@@ -46,8 +48,66 @@ def _details(streak: StreakRecord) -> str:
     return "\n".join(lines)
 
 
-def build_router(repository: Repository) -> Router:
+def build_router(
+    repository: Repository,
+    activations: StreakActivationRepository,
+    streaks: StreakService,
+) -> Router:
     router = Router(name="callbacks")
+
+    @router.callback_query(F.data.startswith("streak_start:approve:"))
+    async def approve_streak_start(callback: CallbackQuery, bot: Bot) -> None:
+        token = (callback.data or "").rsplit(":", 1)[-1]
+        request = await activations.get_request(token)
+        if request is None:
+            await callback.answer(
+                "انتهى هذا الطلب أو تم استخدامه مسبقًا.",
+                show_alert=True,
+            )
+            return
+
+        if callback.from_user.id != request.owner_user_id:
+            await callback.answer("هذا الطلب ليس لك.", show_alert=True)
+            return
+
+        existing = await repository.get_streak(
+            request.business_connection_id,
+            request.chat_id,
+        )
+        if existing is not None:
+            await activations.finish_request(token)
+            if callback.message is not None:
+                with suppress(TelegramBadRequest):
+                    await callback.message.edit_reply_markup(reply_markup=None)
+            await callback.answer("الستريك مفعّل بالفعل في هذه المحادثة.", show_alert=True)
+            return
+
+        await streaks.start_from_peer_request(
+            connection_id=request.business_connection_id,
+            chat_id=request.chat_id,
+            peer_user_id=request.peer_user_id,
+            source_message_id=request.source_message_id,
+        )
+        await activations.finish_request(token)
+
+        if callback.message is not None:
+            with suppress(TelegramBadRequest):
+                await callback.message.edit_text(
+                    "✅ تم بدء الستريك.\n\n"
+                    "تم احتساب رسالة الطرف الثاني، والآن ينتظر البوت رسالتك اليوم."
+                )
+
+        with suppress(TelegramBadRequest):
+            await bot.send_message(
+                chat_id=request.chat_id,
+                business_connection_id=request.business_connection_id,
+                text=(
+                    "🔥 تم قبول بدء الستريك. "
+                    "تم احتساب رسالة الطرف الثاني، وبانتظار رسالة صاحب الحساب اليوم."
+                ),
+            )
+
+        await callback.answer("تم بدء الستريك 🔥")
 
     @router.callback_query(F.data == "streak:revive")
     async def revive_streak(callback: CallbackQuery, bot: Bot) -> None:
