@@ -97,6 +97,18 @@ CREATE TABLE IF NOT EXISTS guest_streak_requests (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS guest_streak_actions (
+    token TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    business_connection_id TEXT NOT NULL,
+    chat_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY (business_connection_id)
+        REFERENCES business_connections(business_connection_id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS streak_start_requests (
     token TEXT PRIMARY KEY,
     business_connection_id TEXT NOT NULL,
@@ -113,6 +125,9 @@ CREATE TABLE IF NOT EXISTS streak_start_requests (
 
 CREATE INDEX IF NOT EXISTS idx_guest_streak_requests_expiry
 ON guest_streak_requests(expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_guest_streak_actions_expiry
+ON guest_streak_actions(expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_streak_start_requests_expiry
 ON streak_start_requests(expires_at);
