@@ -9,6 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 
 from app.config import load_settings
+from app.database.activation_repository import StreakActivationRepository
 from app.database.engine import Database
 from app.database.repository import Repository
 from app.handlers.business import build_router as business_router
@@ -34,6 +35,7 @@ async def main() -> None:
     await database.init()
 
     repository = Repository(database)
+    activations = StreakActivationRepository(database)
     session = AiohttpSession(timeout=60)
     bot = Bot(
         settings.bot_token,
@@ -44,7 +46,7 @@ async def main() -> None:
 
     poses = PoseCatalog(settings.assets_dir)
     renderer = StickerRenderer(poses, settings.rendered_dir)
-    streaks = StreakService(repository, settings.timezone, poses)
+    streaks = StreakService(repository, activations, settings.timezone, poses)
     stickers = StickerService(
         bot,
         repository,
@@ -57,9 +59,9 @@ async def main() -> None:
 
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
-    dp.include_router(business_router(streaks, stickers, repository))
+    dp.include_router(business_router(streaks, stickers, repository, activations))
     dp.include_router(guest_router(repository))
-    dp.include_router(callbacks_router(repository))
+    dp.include_router(callbacks_router(repository, activations, streaks))
     dp.include_router(private_router(repository, stickers))
 
     scheduler = StreakScheduler(repository, stickers)

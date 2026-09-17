@@ -17,3 +17,16 @@ def revive_streak_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🧊 إحياء الستريك", callback_data="streak:revive")]
         ]
     )
+
+
+def start_request_keyboard(token: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔥 بدء الستريك",
+                    callback_data=f"streak_start:approve:{token}",
+                )
+            ]
+        ]
+    )

@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS streaks (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS streak_activations (
+    business_connection_id TEXT NOT NULL,
+    chat_id INTEGER NOT NULL,
+    activated_at TEXT NOT NULL,
+    PRIMARY KEY (business_connection_id, chat_id),
+    FOREIGN KEY (business_connection_id)
+        REFERENCES business_connections(business_connection_id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS processed_messages (
     business_connection_id TEXT NOT NULL,
     chat_id INTEGER NOT NULL,
@@ -87,8 +97,25 @@ CREATE TABLE IF NOT EXISTS guest_streak_requests (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS streak_start_requests (
+    token TEXT PRIMARY KEY,
+    business_connection_id TEXT NOT NULL,
+    chat_id INTEGER NOT NULL,
+    peer_user_id INTEGER NOT NULL,
+    source_message_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    UNIQUE (business_connection_id, chat_id),
+    FOREIGN KEY (business_connection_id)
+        REFERENCES business_connections(business_connection_id)
+        ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_guest_streak_requests_expiry
 ON guest_streak_requests(expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_streak_start_requests_expiry
+ON streak_start_requests(expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_streaks_peer
 ON streaks(peer_user_id);
@@ -138,6 +165,22 @@ MIGRATIONS = (
         "UPDATE streaks SET "
         "freeze_count=CASE WHEN freeze_count < 3 THEN 3 ELSE freeze_count END, "
         "freeze_seed_version=1 WHERE freeze_seed_version=0"
+    ),
+    (
+        "INSERT OR IGNORE INTO streak_activations("
+        "business_connection_id, chat_id, activated_at) "
+        "SELECT business_connection_id, chat_id, updated_at FROM streaks "
+        "WHERE current_streak > 0 OR completed_days > 0 "
+        "OR last_completed_day IS NOT NULL"
+    ),
+    (
+        "DELETE FROM streaks "
+        "WHERE current_streak=0 AND completed_days=0 "
+        "AND last_completed_day IS NULL AND revivable_streak=0 "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM streak_activations AS a "
+        "WHERE a.business_connection_id=streaks.business_connection_id "
+        "AND a.chat_id=streaks.chat_id)"
     ),
 )
 
