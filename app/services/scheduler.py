@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.database.repository import Repository
+from app.services.guest_delivery import GuestDeliveryService
 from app.services.sticker_service import StickerService
 
 logger = logging.getLogger(__name__)
@@ -16,12 +17,14 @@ class StreakScheduler:
         self,
         repository: Repository,
         stickers: StickerService,
+        guests: GuestDeliveryService,
         *,
         interval_seconds: int = 300,
         warning_hour: int = 22,
     ):
         self.repository = repository
         self.stickers = stickers
+        self.guests = guests
         self.interval_seconds = interval_seconds
         self.warning_hour = warning_hour
 
@@ -66,11 +69,18 @@ class StreakScheduler:
                     today,
                 )
                 if claimed:
-                    await self.stickers.send_special(
+                    sticker_sent = await self.guests.summon(
+                        event="warning_sticker",
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
-                        name="warning",
                     )
+                    if not sticker_sent:
+                        await self.stickers.send_special(
+                            connection_id=streak.business_connection_id,
+                            chat_id=streak.chat_id,
+                            name="warning",
+                        )
+
                     owner_missing = streak.owner_sent_day != today
                     peer_missing = streak.peer_sent_day != today
                     if owner_missing and peer_missing:
@@ -79,15 +89,24 @@ class StreakScheduler:
                         missing = "صاحب الحساب لم يرسل اليوم"
                     else:
                         missing = "الطرف الثاني لم يرسل اليوم"
-                    await self.stickers.send_notice_text(
+
+                    notice_sent = await self.guests.summon(
+                        event="warning_notice",
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
-                        text=f"⏰ بقي أقل من ساعتين. {missing} وقد ينقطع الستريك.",
                     )
+                    if not notice_sent:
+                        await self.stickers.send_notice_text(
+                            connection_id=streak.business_connection_id,
+                            chat_id=streak.chat_id,
+                            text=f"⏰ بقي أقل من ساعتين. {missing} وقد ينقطع الستريك.",
+                        )
                     logger.info(
-                        "WARNING_SENT connection=%s chat=%s",
+                        "WARNING_SENT connection=%s chat=%s guest_sticker=%s guest_notice=%s",
                         streak.business_connection_id,
                         streak.chat_id,
+                        sticker_sent,
+                        notice_sent,
                     )
 
             if (
@@ -102,16 +121,23 @@ class StreakScheduler:
                     day_before_missed=day_before,
                 )
                 if result == "broken":
-                    await self.stickers.send_special(
+                    sent = await self.guests.summon(
+                        event="broken",
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
-                        name="broken",
-                        revive_available=streak.freeze_count > 0,
                     )
+                    if not sent:
+                        await self.stickers.send_special(
+                            connection_id=streak.business_connection_id,
+                            chat_id=streak.chat_id,
+                            name="broken",
+                            revive_available=False,
+                        )
                     logger.info(
-                        "STREAK_BROKEN connection=%s chat=%s",
+                        "STREAK_BROKEN connection=%s chat=%s guest=%s",
                         streak.business_connection_id,
                         streak.chat_id,
+                        sent,
                     )
                 elif result == "frozen":
                     logger.info(

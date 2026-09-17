@@ -37,7 +37,17 @@ class FakeStickers:
         self.notices.append(kwargs)
 
 
-def test_scheduler_sends_one_warning_with_missing_role():
+class FakeGuests:
+    def __init__(self, succeeds=True):
+        self.succeeds = succeeds
+        self.events = []
+
+    async def summon(self, **kwargs):
+        self.events.append(kwargs)
+        return self.succeeds
+
+
+def test_scheduler_sends_warning_through_guest_mode():
     today = datetime.now(timezone.utc).date()
     yesterday = (today - timedelta(days=1)).isoformat()
     streak = StreakRecord(
@@ -53,17 +63,21 @@ def test_scheduler_sends_one_warning_with_missing_role():
     )
     repository = FakeRepository(streak)
     stickers = FakeStickers()
-    scheduler = StreakScheduler(repository, stickers, warning_hour=0)
+    guests = FakeGuests()
+    scheduler = StreakScheduler(repository, stickers, guests, warning_hour=0)
 
     asyncio.run(scheduler.run_once())
 
     assert repository.claimed
-    assert stickers.special[0]["name"] == "warning"
-    assert "الطرف الثاني" in stickers.notices[0]["text"]
+    assert [event["event"] for event in guests.events] == [
+        "warning_sticker",
+        "warning_notice",
+    ]
+    assert stickers.special == []
+    assert stickers.notices == []
 
 
-
-def test_broken_streak_hides_revival_without_protection():
+def test_broken_streak_is_sent_through_guest_mode_without_revive_button():
     class BrokenRepository(FakeRepository):
         async def process_missed_day(self, **kwargs):
             return "broken"
@@ -83,13 +97,14 @@ def test_broken_streak_hides_revival_without_protection():
     )
     repository = BrokenRepository(streak)
     stickers = FakeStickers()
-    scheduler = StreakScheduler(repository, stickers, warning_hour=24)
+    guests = FakeGuests()
+    scheduler = StreakScheduler(repository, stickers, guests, warning_hour=24)
 
     asyncio.run(scheduler.run_once())
 
-    assert stickers.special == [{
+    assert guests.events == [{
+        "event": "broken",
         "connection_id": "bc-1",
         "chat_id": 20,
-        "name": "broken",
-        "revive_available": False,
     }]
+    assert stickers.special == []

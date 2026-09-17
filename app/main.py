@@ -12,15 +12,20 @@ from app.config import load_settings
 from app.database.activation_repository import StreakActivationRepository
 from app.database.engine import Database
 from app.database.repository import Repository
+from app.database.revive_request_repository import ReviveRequestRepository
 from app.handlers.business import build_router as business_router
 from app.handlers.callbacks import build_router as callbacks_router
 from app.handlers.connection import build_router as connection_router
 from app.handlers.errors import build_router as errors_router
 from app.handlers.guest import build_router as guest_router
+from app.handlers.guest_callbacks import build_router as guest_callbacks_router
 from app.handlers.private import build_router as private_router
+from app.handlers.streak_test import build_router as streak_test_router
+from app.services.guest_delivery import GuestDeliveryService
 from app.services.scheduler import StreakScheduler
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
+from app.services.streak_test_service import StreakTestService
 from app.stickers.poses import PoseCatalog
 from app.stickers.renderer import StickerRenderer
 
@@ -36,6 +41,7 @@ async def main() -> None:
 
     repository = Repository(database)
     activations = StreakActivationRepository(database)
+    revive_requests = ReviveRequestRepository(database)
     session = AiohttpSession(timeout=60)
     bot = Bot(
         settings.bot_token,
@@ -56,15 +62,21 @@ async def main() -> None:
         sticker_set_owner_id=settings.sticker_set_owner_id,
         sticker_set_title=settings.sticker_set_title,
     )
+    guests = GuestDeliveryService(bot, repository)
+    streak_tests = StreakTestService(repository)
 
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
-    dp.include_router(business_router(streaks, stickers, repository, activations))
-    dp.include_router(guest_router(repository))
+    dp.include_router(streak_test_router(repository, stickers, guests, streak_tests))
+    dp.include_router(
+        business_router(streaks, stickers, repository, activations, guests)
+    )
+    dp.include_router(guest_router(repository, stickers, revive_requests))
+    dp.include_router(guest_callbacks_router(repository, revive_requests))
     dp.include_router(callbacks_router(repository, activations, streaks))
     dp.include_router(private_router(repository, stickers))
 
-    scheduler = StreakScheduler(repository, stickers)
+    scheduler = StreakScheduler(repository, stickers, guests)
     scheduler_task = asyncio.create_task(
         scheduler.run_forever(),
         name="streak-scheduler",

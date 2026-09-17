@@ -5,11 +5,12 @@ import unicodedata
 
 from aiogram import Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
-from aiogram.types import Message, ReplyParameters
+from aiogram.types import Message
 
 from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
 from app.keyboards.streak import start_request_keyboard
+from app.services.guest_delivery import GuestDeliveryService
 from app.services.message_filter import should_count
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
@@ -46,11 +47,24 @@ def is_start_streak_query(text: str | None) -> bool:
     }
 
 
+def is_revive_streak_query(text: str | None) -> bool:
+    normalized = _normalize_text(text)
+    return normalized in {
+        "احياء الستريك",
+        "إحياء الستريك",
+        "احياء ستريك",
+        "إحياء ستريك",
+        "revive streak",
+        "/revivestreak",
+    }
+
+
 def build_router(
     streaks: StreakService,
     stickers: StickerService,
     repository: Repository,
     activations: StreakActivationRepository,
+    guests: GuestDeliveryService,
 ) -> Router:
     router = Router(name="business_messages")
 
@@ -81,84 +95,48 @@ def build_router(
                     return
 
                 if status.current > 0:
-                    pose = record.last_pose or streaks.poses.choose(status.current, None).id
-                    try:
-                        await stickers.send_success(
-                            connection_id=connection_id,
-                            chat_id=message.chat.id,
-                            pose=pose,
-                            days=status.current,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "STREAK_STATUS_STICKER_FAILED connection=%s chat=%s days=%s",
-                            connection_id,
-                            message.chat.id,
-                            status.current,
-                        )
-
-                me = await message.bot.get_me()
-                if me.username and bool(me.supports_guest_queries):
-                    token = await repository.create_guest_streak_request(
-                        connection_id,
-                        message.chat.id,
+                    sent = await guests.summon(
+                        event="success",
+                        connection_id=connection_id,
+                        chat_id=message.chat.id,
+                        reply_to_message_id=message.message_id,
                     )
-                    if token is None:
-                        logger.info(
-                            "STREAK_GUEST_COOLDOWN connection=%s chat=%s",
-                            connection_id,
-                            message.chat.id,
-                        )
-                        return
-                    try:
-                        summon = await message.bot.send_message(
-                            chat_id=message.chat.id,
-                            business_connection_id=connection_id,
-                            text=f"@{me.username} streak:{token}",
-                            disable_notification=True,
-                            reply_parameters=ReplyParameters(
-                                message_id=message.message_id,
-                            ),
-                        )
-                    except TelegramBadRequest as error:
-                        await repository.finish_guest_streak_request(token)
-                        logger.warning(
-                            "STREAK_GUEST_INVOKE_REJECTED connection=%s chat=%s error=%s",
-                            connection_id,
-                            message.chat.id,
-                            error,
-                        )
-                    else:
-                        await repository.set_guest_streak_summon_message(
-                            token,
-                            summon.message_id,
-                        )
-                        logger.info(
-                            "STREAK_GUEST_INVOKE_SENT connection=%s chat=%s message=%s",
-                            connection_id,
-                            message.chat.id,
-                            summon.message_id,
-                        )
-                        return
+                    if not sent:
+                        pose = record.last_pose or streaks.poses.choose(status.current, None).id
+                        try:
+                            await stickers.send_success(
+                                connection_id=connection_id,
+                                chat_id=message.chat.id,
+                                pose=pose,
+                                days=status.current,
+                            )
+                        except Exception:
+                            logger.exception(
+                                "STREAK_STATUS_STICKER_FAILED connection=%s chat=%s days=%s",
+                                connection_id,
+                                message.chat.id,
+                                status.current,
+                            )
 
-                logger.warning(
-                    "STREAK_GUEST_UNAVAILABLE connection=%s chat=%s supports_guest=%s",
-                    connection_id,
-                    message.chat.id,
-                    bool(me.supports_guest_queries),
-                )
-                timezone_name = await repository.get_connection_timezone(connection_id)
-                await stickers.send_status(
+                sent = await guests.summon(
+                    event="status",
                     connection_id=connection_id,
                     chat_id=message.chat.id,
-                    current=status.current,
-                    longest=status.longest,
-                    completed_days=status.completed_days,
-                    break_count=status.break_count,
-                    freeze_count=status.freeze_count,
-                    last_completed_day=status.last_completed_day,
-                    timezone_name=timezone_name,
+                    reply_to_message_id=message.message_id,
                 )
+                if not sent:
+                    timezone_name = await repository.get_connection_timezone(connection_id)
+                    await stickers.send_status(
+                        connection_id=connection_id,
+                        chat_id=message.chat.id,
+                        current=status.current,
+                        longest=status.longest,
+                        completed_days=status.completed_days,
+                        break_count=status.break_count,
+                        freeze_count=status.freeze_count,
+                        last_completed_day=status.last_completed_day,
+                        timezone_name=timezone_name,
+                    )
             elif connection_id:
                 logger.warning(
                     "STREAK_COMMAND_STATUS_UNAVAILABLE connection=%s chat=%s",
@@ -170,6 +148,40 @@ def build_router(
                     chat_id=message.chat.id,
                     text="تعذر قراءة الستريك مؤقتًا. تأكد أن اتصال الأعمال مفعّل ثم حاول مجددًا.",
                 )
+            return
+
+        if is_revive_streak_query(message.text):
+            if not connection_id or message.from_user is None:
+                return
+            owner_id = await streaks.get_owner_id(message)
+            if owner_id is None:
+                return
+            record = await repository.get_streak(connection_id, message.chat.id)
+            allowed_users = {owner_id}
+            if record is not None and record.peer_user_id is not None:
+                allowed_users.add(record.peer_user_id)
+            if message.from_user.id not in allowed_users:
+                return
+
+            sent = await guests.summon(
+                event="revive",
+                connection_id=connection_id,
+                chat_id=message.chat.id,
+                reply_to_message_id=message.message_id,
+                ttl_seconds=90,
+            )
+            if not sent:
+                await stickers.send_notice_text(
+                    connection_id=connection_id,
+                    chat_id=message.chat.id,
+                    text="تعذر استدعاء وضع الضيف لطلب الإحياء حاليًا.",
+                )
+            logger.info(
+                "STREAK_REVIVE_REQUESTED connection=%s chat=%s sender=%s",
+                connection_id,
+                message.chat.id,
+                message.from_user.id,
+            )
             return
 
         if not should_count(message) or not connection_id or message.from_user is None:
@@ -264,19 +276,26 @@ def build_router(
         if not completion.completed or completion.pose is None:
             return
 
-        try:
-            await stickers.send_success(
-                connection_id=connection_id,
-                chat_id=message.chat.id,
-                pose=completion.pose,
-                days=completion.days,
-            )
-        except Exception:
-            logger.exception(
-                "STREAK_STICKER_SEND_FAILED connection=%s chat=%s days=%s",
-                connection_id,
-                message.chat.id,
-                completion.days,
-            )
+        sent = await guests.summon(
+            event="success",
+            connection_id=connection_id,
+            chat_id=message.chat.id,
+            reply_to_message_id=message.message_id,
+        )
+        if not sent:
+            try:
+                await stickers.send_success(
+                    connection_id=connection_id,
+                    chat_id=message.chat.id,
+                    pose=completion.pose,
+                    days=completion.days,
+                )
+            except Exception:
+                logger.exception(
+                    "STREAK_STICKER_SEND_FAILED connection=%s chat=%s days=%s",
+                    connection_id,
+                    message.chat.id,
+                    completion.days,
+                )
 
     return router
