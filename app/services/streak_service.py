@@ -141,7 +141,7 @@ class StreakService:
                 completion = Completion(False)
             else:
                 record = await self.repository.get_streak(connection_id, message.chat.id)
-                if record is None or not record.is_enabled:
+                if record is not None and not record.is_enabled:
                     completion = Completion(False)
                 else:
                     sender_id = message.from_user.id
