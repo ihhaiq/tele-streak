@@ -100,6 +100,9 @@ class StreakService:
             )
             return None
 
+    async def get_owner_id(self, message: Message) -> int | None:
+        return await self._ensure_owner(message)
+
     async def get_status(self, message: Message) -> StreakStatus | None:
         connection_id = message.business_connection_id
         if not connection_id or message.from_user is None:
@@ -126,26 +129,102 @@ class StreakService:
         async with self._locks[key]:
             owner_id = await self._ensure_owner(message)
             if owner_id is None:
-                return Completion(False)
-            sender_id = message.from_user.id
-            role = "owner" if sender_id == owner_id else "peer"
-            peer_id = None if role == "owner" else sender_id
-            today, yesterday = await self._days(connection_id)
-            result = await self.repository.register_activity(
-                connection_id=connection_id,
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                peer_user_id=peer_id,
-                role=role,
-                today=today,
-                yesterday=yesterday,
-                choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
-            )
-            completion = Completion(
-                completed=result.completed,
-                days=result.days,
-                pose=result.pose_id,
-                duplicate=result.duplicate,
-            )
+                completion = Completion(False)
+            else:
+                record = await self.repository.get_streak(connection_id, message.chat.id)
+                if record is None or not record.is_enabled:
+                    completion = Completion(False)
+                else:
+                    sender_id = message.from_user.id
+                    role = "owner" if sender_id == owner_id else "peer"
+                    peer_id = None if role == "owner" else sender_id
+                    today, yesterday = await self._days(connection_id)
+                    result = await self.repository.register_activity(
+                        connection_id=connection_id,
+                        chat_id=message.chat.id,
+                        message_id=message.message_id,
+                        peer_user_id=peer_id,
+                        role=role,
+                        today=today,
+                        yesterday=yesterday,
+                        choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
+                    )
+                    completion = Completion(
+                        completed=result.completed,
+                        days=result.days,
+                        pose=result.pose_id,
+                        duplicate=result.duplicate,
+                    )
+        self._release_lock(key)
+        return completion
+
+    async def start_by_owner(self, message: Message) -> Completion:
+        connection_id = message.business_connection_id
+        if not connection_id or message.from_user is None:
+            return Completion(False)
+        key = (connection_id, message.chat.id)
+        async with self._locks[key]:
+            owner_id = await self._ensure_owner(message)
+            if owner_id is None or message.from_user.id != owner_id:
+                completion = Completion(False)
+            else:
+                record = await self.repository.get_streak(connection_id, message.chat.id)
+                if record is not None and not record.is_enabled:
+                    await self.repository.toggle_chat_setting(
+                        owner_id,
+                        message.chat.id,
+                        "enabled",
+                    )
+                today, yesterday = await self._days(connection_id)
+                result = await self.repository.register_activity(
+                    connection_id=connection_id,
+                    chat_id=message.chat.id,
+                    message_id=message.message_id,
+                    peer_user_id=None,
+                    role="owner",
+                    today=today,
+                    yesterday=yesterday,
+                    choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
+                )
+                completion = Completion(
+                    completed=result.completed,
+                    days=result.days,
+                    pose=result.pose_id,
+                    duplicate=result.duplicate,
+                )
+        self._release_lock(key)
+        return completion
+
+    async def start_from_peer_request(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        peer_user_id: int,
+        source_message_id: int,
+    ) -> Completion:
+        key = (connection_id, chat_id)
+        async with self._locks[key]:
+            record = await self.repository.get_streak(connection_id, chat_id)
+            if record is not None:
+                completion = Completion(False, days=record.current_streak)
+            else:
+                today, yesterday = await self._days(connection_id)
+                result = await self.repository.register_activity(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    message_id=source_message_id,
+                    peer_user_id=peer_user_id,
+                    role="peer",
+                    today=today,
+                    yesterday=yesterday,
+                    choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
+                )
+                completion = Completion(
+                    completed=result.completed,
+                    days=result.days,
+                    pose=result.pose_id,
+                    duplicate=result.duplicate,
+                )
         self._release_lock(key)
         return completion
