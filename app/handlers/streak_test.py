@@ -143,19 +143,41 @@ def build_router(
             )
             return
 
+        async def send_broken_preview() -> None:
+            notice = await stickers.send_broken_notice(
+                connection_id=connection_id,
+                chat_id=message.chat.id,
+            )
+            sent = await guests.summon(
+                event="broken",
+                connection_id=connection_id,
+                chat_id=message.chat.id,
+                reply_to_message_id=notice.message_id,
+                ttl_seconds=120,
+            )
+            if not sent:
+                await stickers.send_special(
+                    connection_id=connection_id,
+                    chat_id=message.chat.id,
+                    name="broken",
+                    revive_available=False,
+                    reply_to_message_id=notice.message_id,
+                )
+
+        if action == "broken":
+            await send_broken_preview()
+            return
+
         event_groups: dict[str, tuple[str, ...]] = {
             "status": ("status",),
             "success": ("success",),
             "warning": ("warning_sticker", "warning_notice"),
-            "broken": ("broken_notice",),
             "revive": ("test_revive",),
             "all": (
                 "success",
                 "status",
                 "warning_sticker",
                 "warning_notice",
-                "broken_notice",
-                "test_revive",
             ),
         }
         failed: list[str] = []
@@ -169,6 +191,18 @@ def build_router(
             )
             if not sent:
                 failed.append(event)
+
+        if action == "all":
+            await send_broken_preview()
+            sent = await guests.summon(
+                event="test_revive",
+                connection_id=connection_id,
+                chat_id=message.chat.id,
+                reply_to_message_id=message.message_id,
+                ttl_seconds=120,
+            )
+            if not sent:
+                failed.append("test_revive")
 
         if failed:
             await stickers.send_notice_text(

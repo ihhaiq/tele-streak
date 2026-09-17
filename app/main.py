@@ -18,11 +18,9 @@ from app.handlers.callbacks import build_router as callbacks_router
 from app.handlers.connection import build_router as connection_router
 from app.handlers.errors import build_router as errors_router
 from app.handlers.guest import build_router as guest_router
-from app.handlers.guest_broken_notice import build_router as guest_broken_notice_router
 from app.handlers.guest_callbacks import build_router as guest_callbacks_router
 from app.handlers.private import build_router as private_router
 from app.handlers.streak_test import build_router as streak_test_router
-from app.services.broken_animation import BrokenAnimationService
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.scheduler import StreakScheduler
 from app.services.sticker_service import StickerService
@@ -66,20 +64,12 @@ async def main() -> None:
     )
     guests = GuestDeliveryService(bot, repository)
     streak_tests = StreakTestService(repository)
-    broken_animation = BrokenAnimationService(
-        bot,
-        repository,
-        settings.ready_stickers_dir.parent / "special" / "broken.webp",
-        settings.rendered_dir,
-    )
-
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
     dp.include_router(streak_test_router(repository, stickers, guests, streak_tests))
     dp.include_router(
         business_router(streaks, stickers, repository, activations, guests)
     )
-    dp.include_router(guest_broken_notice_router(repository, broken_animation))
     dp.include_router(guest_router(repository, stickers, revive_requests))
     dp.include_router(guest_callbacks_router(repository, revive_requests))
     dp.include_router(callbacks_router(repository, activations, streaks))
