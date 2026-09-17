@@ -8,19 +8,11 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent, Message
 
 from app.database.repository import Repository
+from app.services.streak_messages import BROKEN_NOTICE_TEXT
 
 
 BROKEN_NOTICE_RE = re.compile(
     r"(?:^|\s)streak:broken_notice:([A-Za-z0-9_-]{8,32})(?:\s|$)"
-)
-
-BROKEN_NOTICE_TEXT = (
-    "💔 الستريك مات.\n\n"
-    "ما كملتوا شرط اليوم، ولهذا انقطع الستريك.\n\n"
-    "إذا تريدون ترجعوه، واحد منكم يكتب «احياء الستريك» هنا. "
-    "راح يطلع طلب إحياء، وبعدها لازم الطرفين يضغطون ✅ موافقة.\n\n"
-    "إذا وافق طرف واحد بس، ما يرجع الستريك. وإذا وافقتوا اثنينكم، "
-    "يستخدم البوت 🧊 من رصيد الحماية ويرجع الستريك مثل ما كان."
 )
 
 
