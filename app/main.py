@@ -20,10 +20,12 @@ from app.handlers.errors import build_router as errors_router
 from app.handlers.guest import build_router as guest_router
 from app.handlers.guest_callbacks import build_router as guest_callbacks_router
 from app.handlers.private import build_router as private_router
+from app.handlers.streak_test import build_router as streak_test_router
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.scheduler import StreakScheduler
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
+from app.services.streak_test_service import StreakTestService
 from app.stickers.poses import PoseCatalog
 from app.stickers.renderer import StickerRenderer
 
@@ -61,9 +63,11 @@ async def main() -> None:
         sticker_set_title=settings.sticker_set_title,
     )
     guests = GuestDeliveryService(bot, repository)
+    streak_tests = StreakTestService(repository)
 
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
+    dp.include_router(streak_test_router(repository, stickers, guests, streak_tests))
     dp.include_router(
         business_router(streaks, stickers, repository, activations, guests)
     )
