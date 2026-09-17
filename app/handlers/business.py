@@ -68,7 +68,19 @@ def build_router(
             status = await streaks.get_status(message)
             if status is not None and connection_id:
                 record = await repository.get_streak(connection_id, message.chat.id)
-                if record is not None and status.current > 0:
+                active = await activations.is_active(connection_id, message.chat.id)
+                if not active or record is None:
+                    await stickers.send_notice_text(
+                        connection_id=connection_id,
+                        chat_id=message.chat.id,
+                        text=(
+                            "🔥 لا يوجد ستريك مفعّل في هذه المحادثة بعد. "
+                            "اكتب «بدأ ستريك» لبدئه، أو وافق على طلب الطرف الثاني من خاص البوت."
+                        ),
+                    )
+                    return
+
+                if status.current > 0:
                     pose = record.last_pose or streaks.poses.choose(status.current, None).id
                     try:
                         await stickers.send_success(
