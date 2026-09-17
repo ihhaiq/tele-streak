@@ -1,6 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
+from app.database.activation_repository import StreakActivationRepository
 from app.database.engine import Database
 from app.database.repository import Repository
 from app.services.streak_service import StreakService
@@ -20,18 +21,29 @@ def message(connection_id: str, chat_id: int, sender_id: int, message_id: int):
     )
 
 
+def make_service(database: Database, repository: Repository) -> StreakService:
+    return StreakService(
+        repository,
+        StreakActivationRepository(database),
+        "Asia/Baghdad",
+        FakePoses(),
+    )
+
+
 def test_normal_messages_do_not_auto_start_streak(tmp_path):
     async def scenario():
         database = Database(tmp_path / "test.db")
         await database.init()
         repository = Repository(database)
+        activations = StreakActivationRepository(database)
         await repository.upsert_connection("bc-1", 10, 10, True)
-        service = StreakService(repository, "Asia/Baghdad", FakePoses())
+        service = make_service(database, repository)
 
         owner_message = message("bc-1", 20, 10, 1)
         result = await service.register_message(owner_message)
         assert not result.completed
         assert await repository.get_streak("bc-1", 20) is None
+        assert not await activations.is_active("bc-1", 20)
 
         await database.close()
 
@@ -43,11 +55,13 @@ def test_owner_start_counts_owner_then_waits_for_peer(tmp_path):
         database = Database(tmp_path / "test.db")
         await database.init()
         repository = Repository(database)
+        activations = StreakActivationRepository(database)
         await repository.upsert_connection("bc-1", 10, 10, True)
-        service = StreakService(repository, "Asia/Baghdad", FakePoses())
+        service = make_service(database, repository)
 
         start = await service.start_by_owner(message("bc-1", 20, 10, 1))
         assert not start.completed
+        assert await activations.is_active("bc-1", 20)
         record = await repository.get_streak("bc-1", 20)
         assert record is not None
         assert record.owner_sent_day is not None
@@ -68,8 +82,9 @@ def test_approved_peer_request_counts_peer_then_waits_for_owner(tmp_path):
         database = Database(tmp_path / "test.db")
         await database.init()
         repository = Repository(database)
+        activations = StreakActivationRepository(database)
         await repository.upsert_connection("bc-1", 10, 10, True)
-        service = StreakService(repository, "Asia/Baghdad", FakePoses())
+        service = make_service(database, repository)
 
         start = await service.start_from_peer_request(
             connection_id="bc-1",
@@ -78,6 +93,7 @@ def test_approved_peer_request_counts_peer_then_waits_for_owner(tmp_path):
             source_message_id=1,
         )
         assert not start.completed
+        assert await activations.is_active("bc-1", 20)
         record = await repository.get_streak("bc-1", 20)
         assert record is not None
         assert record.owner_sent_day is None
