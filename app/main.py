@@ -46,7 +46,7 @@ async def main() -> None:
 
     poses = PoseCatalog(settings.assets_dir)
     renderer = StickerRenderer(poses, settings.rendered_dir)
-    streaks = StreakService(repository, settings.timezone, poses)
+    streaks = StreakService(repository, activations, settings.timezone, poses)
     stickers = StickerService(
         bot,
         repository,
