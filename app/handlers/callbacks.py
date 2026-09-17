@@ -109,41 +109,10 @@ def build_router(
         await callback.answer("تم بدء الستريك 🔥")
 
     @router.callback_query(F.data == "streak:revive")
-    async def revive_streak(callback: CallbackQuery, bot: Bot) -> None:
-        if callback.message is None:
-            await callback.answer("تعذر العثور على رسالة الستريك.", show_alert=True)
-            return
-
-        connection_id = getattr(callback.message, "business_connection_id", None)
-        if not connection_id:
-            await callback.answer("تعذر تحديد اتصال الأعمال.", show_alert=True)
-            return
-
-        chat_id = callback.message.chat.id
-        result = await repository.revive_streak(connection_id, chat_id)
-        if result.status == "no_balance":
-            await callback.answer(
-                "نفد رصيد الحماية 🧊",
-                show_alert=True,
-            )
-            return
-        if result.status != "revived":
-            await callback.answer(
-                "لا يمكن إحياء هذا الستريك الآن.",
-                show_alert=True,
-            )
-            return
-
-        with suppress(TelegramBadRequest):
-            await bot.edit_message_reply_markup(
-                chat_id=chat_id,
-                message_id=callback.message.message_id,
-                business_connection_id=connection_id,
-                reply_markup=None,
-            )
+    async def legacy_revive_streak(callback: CallbackQuery) -> None:
         await callback.answer(
-            f"تم إحياء الستريك 🔥 عاد إلى {result.streak}. "
-            f"المتبقي: {protection_text(result.freeze_count)}",
+            "تم تغيير طريقة الإحياء. اكتب «احياء الستريك» في المحادثة، "
+            "ثم يجب أن يوافق الطرفان من زر الموافقة.",
             show_alert=True,
         )
 
