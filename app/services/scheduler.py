@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.database.repository import Repository
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.sticker_service import StickerService
-from app.services.streak_messages import BROKEN_NOTICE_TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -122,29 +121,31 @@ class StreakScheduler:
                     day_before_missed=day_before,
                 )
                 if result == "broken":
-                    notice_sent = await self.guests.summon(
-                        event="broken_notice",
+                    notice = await self.stickers.send_broken_notice(
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
                     )
-                    if not notice_sent:
+                    sticker_sent = await self.guests.summon(
+                        event="broken",
+                        connection_id=streak.business_connection_id,
+                        chat_id=streak.chat_id,
+                        reply_to_message_id=notice.message_id,
+                    )
+                    if not sticker_sent:
                         await self.stickers.send_special(
                             connection_id=streak.business_connection_id,
                             chat_id=streak.chat_id,
                             name="broken",
                             revive_available=False,
-                        )
-                        await self.stickers.send_notice_text(
-                            connection_id=streak.business_connection_id,
-                            chat_id=streak.chat_id,
-                            text=BROKEN_NOTICE_TEXT,
+                            reply_to_message_id=notice.message_id,
                         )
 
                     logger.info(
-                        "STREAK_BROKEN connection=%s chat=%s guest_rich_notice=%s",
+                        "STREAK_BROKEN connection=%s chat=%s notice=%s guest_sticker=%s",
                         streak.business_connection_id,
                         streak.chat_id,
-                        notice_sent,
+                        notice.message_id,
+                        sticker_sent,
                     )
                 elif result == "frozen":
                     logger.info(
