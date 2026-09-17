@@ -1,4 +1,8 @@
-from app.handlers.business import is_start_streak_query, is_streak_query
+from app.handlers.business import (
+    is_revive_streak_query,
+    is_start_streak_query,
+    is_streak_query,
+)
 
 
 def test_streak_query_accepts_arabic_variants():
@@ -30,3 +34,16 @@ def test_start_streak_query_rejects_unrelated_text():
     assert not is_start_streak_query("ستريك")
     assert not is_start_streak_query("بدأ")
     assert not is_start_streak_query("خل نبدأ ستريك")
+
+
+def test_revive_streak_query_accepts_both_arabic_spellings():
+    assert is_revive_streak_query("احياء الستريك")
+    assert is_revive_streak_query("إحياء الستريك")
+    assert is_revive_streak_query("احـياء الـستريك")
+    assert is_revive_streak_query("revive streak")
+
+
+def test_revive_streak_query_rejects_normal_messages():
+    assert not is_revive_streak_query("احياء")
+    assert not is_revive_streak_query("الستريك")
+    assert not is_revive_streak_query(None)
