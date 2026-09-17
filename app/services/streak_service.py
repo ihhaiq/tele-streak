@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from aiogram.types import Message
 
+from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
 from app.stickers.poses import PoseCatalog
 
@@ -36,8 +37,15 @@ class StreakStatus:
 
 
 class StreakService:
-    def __init__(self, repository: Repository, timezone_name: str, poses: PoseCatalog):
+    def __init__(
+        self,
+        repository: Repository,
+        activations: StreakActivationRepository,
+        timezone_name: str,
+        poses: PoseCatalog,
+    ):
         self.repository = repository
+        self.activations = activations
         self.tz = ZoneInfo(timezone_name)
         self.poses = poses
         self._locks: defaultdict[tuple[str, int], asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -128,7 +136,8 @@ class StreakService:
         key = (connection_id, message.chat.id)
         async with self._locks[key]:
             owner_id = await self._ensure_owner(message)
-            if owner_id is None:
+            active = await self.activations.is_active(connection_id, message.chat.id)
+            if owner_id is None or not active:
                 completion = Completion(False)
             else:
                 record = await self.repository.get_streak(connection_id, message.chat.id)
@@ -168,13 +177,7 @@ class StreakService:
             if owner_id is None or message.from_user.id != owner_id:
                 completion = Completion(False)
             else:
-                record = await self.repository.get_streak(connection_id, message.chat.id)
-                if record is not None and not record.is_enabled:
-                    await self.repository.toggle_chat_setting(
-                        owner_id,
-                        message.chat.id,
-                        "enabled",
-                    )
+                await self.activations.activate(connection_id, message.chat.id)
                 today, yesterday = await self._days(connection_id)
                 result = await self.repository.register_activity(
                     connection_id=connection_id,
@@ -205,10 +208,14 @@ class StreakService:
     ) -> Completion:
         key = (connection_id, chat_id)
         async with self._locks[key]:
-            record = await self.repository.get_streak(connection_id, chat_id)
-            if record is not None:
-                completion = Completion(False, days=record.current_streak)
+            if await self.activations.is_active(connection_id, chat_id):
+                record = await self.repository.get_streak(connection_id, chat_id)
+                completion = Completion(
+                    False,
+                    days=record.current_streak if record is not None else 0,
+                )
             else:
+                await self.activations.activate(connection_id, chat_id)
                 today, yesterday = await self._days(connection_id)
                 result = await self.repository.register_activity(
                     connection_id=connection_id,
