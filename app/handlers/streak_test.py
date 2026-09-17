@@ -62,7 +62,6 @@ def parse_streak_test_query(text: str | None) -> str | None:
         "انكسار": "broken",
         "broken": "broken",
         "احياء": "revive",
-        "إحياء": "revive",
         "revive": "revive",
         "الكل": "all",
         "all": "all",
@@ -148,7 +147,7 @@ def build_router(
             "status": ("status",),
             "success": ("success",),
             "warning": ("warning_sticker", "warning_notice"),
-            "broken": ("broken",),
+            "broken": ("broken", "broken_notice"),
             "revive": ("test_revive",),
             "all": (
                 "success",
@@ -156,6 +155,7 @@ def build_router(
                 "warning_sticker",
                 "warning_notice",
                 "broken",
+                "broken_notice",
                 "test_revive",
             ),
         }
