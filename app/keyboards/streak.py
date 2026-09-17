@@ -11,15 +11,10 @@ def streak_keyboard(days: int) -> InlineKeyboardMarkup:
     )
 
 
-def revive_streak_keyboard(action_token: str | None = None) -> InlineKeyboardMarkup:
-    callback_data = (
-        f"streak:revive:{action_token}"
-        if action_token
-        else "streak:revive"
-    )
+def revive_streak_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🧊 إحياء الستريك", callback_data=callback_data)]
+            [InlineKeyboardButton(text="🧊 إحياء الستريك", callback_data="streak:revive")]
         ]
     )
 
