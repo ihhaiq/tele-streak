@@ -77,7 +77,7 @@ def test_scheduler_sends_warning_through_guest_mode():
     assert stickers.notices == []
 
 
-def test_broken_streak_sends_sticker_and_guidance_through_guest_mode():
+def test_broken_streak_sends_one_rich_guest_message():
     class BrokenRepository(FakeRepository):
         async def process_missed_day(self, **kwargs):
             return "broken"
@@ -104,11 +104,6 @@ def test_broken_streak_sends_sticker_and_guidance_through_guest_mode():
 
     assert guests.events == [
         {
-            "event": "broken",
-            "connection_id": "bc-1",
-            "chat_id": 20,
-        },
-        {
             "event": "broken_notice",
             "connection_id": "bc-1",
             "chat_id": 20,
@@ -116,3 +111,35 @@ def test_broken_streak_sends_sticker_and_guidance_through_guest_mode():
     ]
     assert stickers.special == []
     assert stickers.notices == []
+
+
+def test_broken_streak_falls_back_to_sticker_and_text_if_guest_fails():
+    class BrokenRepository(FakeRepository):
+        async def process_missed_day(self, **kwargs):
+            return "broken"
+
+    today = datetime.now(timezone.utc).date()
+    day_before_yesterday = (today - timedelta(days=2)).isoformat()
+    streak = StreakRecord(
+        business_connection_id="bc-1", chat_id=20, peer_user_id=30,
+        current_streak=5, longest_streak=5, completed_days=5,
+        break_count=0, last_completed_day=day_before_yesterday,
+        owner_sent_day=None, peer_sent_day=None,
+        last_pose="pose", last_success_message_id=None,
+        last_warning_day=None, last_broken_day=None,
+        notifications_enabled=True, is_enabled=True,
+        freeze_count=0, auto_freeze=False, freezes_used=0,
+        created_at="2026-09-01", updated_at="2026-09-16",
+    )
+    repository = BrokenRepository(streak)
+    stickers = FakeStickers()
+    guests = FakeGuests(succeeds=False)
+    scheduler = StreakScheduler(repository, stickers, guests, warning_hour=24)
+
+    asyncio.run(scheduler.run_once())
+
+    assert len(stickers.special) == 1
+    assert stickers.special[0]["name"] == "broken"
+    assert stickers.special[0]["revive_available"] is False
+    assert len(stickers.notices) == 1
+    assert "الستريك مات" in stickers.notices[0]["text"]
