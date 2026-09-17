@@ -83,3 +83,79 @@ def test_clear_chat_allows_a_new_request(tmp_path):
         await database.close()
 
     asyncio.run(scenario())
+
+
+def test_explicit_activation_is_persisted(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "test.db")
+        await database.init()
+        repository = Repository(database)
+        activations = StreakActivationRepository(database)
+        await repository.upsert_connection("bc-1", 10, 10, True)
+
+        assert not await activations.is_active("bc-1", 20)
+        await activations.activate("bc-1", 20)
+        assert await activations.is_active("bc-1", 20)
+
+        await database.close()
+
+    asyncio.run(scenario())
+
+
+def test_migration_keeps_real_streaks_and_drops_old_zero_rows(tmp_path):
+    async def scenario():
+        path = tmp_path / "test.db"
+        database = Database(path)
+        await database.init()
+        repository = Repository(database)
+        await repository.upsert_connection("bc-1", 10, 10, True)
+
+        await repository.register_activity(
+            connection_id="bc-1",
+            chat_id=20,
+            message_id=1,
+            peer_user_id=30,
+            role="peer",
+            today="2026-09-17",
+            yesterday="2026-09-16",
+            choose_pose=lambda days, last: "pose",
+        )
+
+        await repository.register_activity(
+            connection_id="bc-1",
+            chat_id=21,
+            message_id=2,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-17",
+            yesterday="2026-09-16",
+            choose_pose=lambda days, last: "pose",
+        )
+        await repository.register_activity(
+            connection_id="bc-1",
+            chat_id=21,
+            message_id=3,
+            peer_user_id=30,
+            role="peer",
+            today="2026-09-17",
+            yesterday="2026-09-16",
+            choose_pose=lambda days, last: "pose",
+        )
+        await database.close()
+
+        migrated = Database(path)
+        await migrated.init()
+        migrated_repository = Repository(migrated)
+        activations = StreakActivationRepository(migrated)
+
+        assert await migrated_repository.get_streak("bc-1", 20) is None
+        assert not await activations.is_active("bc-1", 20)
+
+        real_streak = await migrated_repository.get_streak("bc-1", 21)
+        assert real_streak is not None
+        assert real_streak.current_streak == 1
+        assert await activations.is_active("bc-1", 21)
+
+        await migrated.close()
+
+    asyncio.run(scenario())
