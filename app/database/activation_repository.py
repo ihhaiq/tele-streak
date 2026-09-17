@@ -26,6 +26,59 @@ class StreakActivationRepository:
     def _now() -> datetime:
         return datetime.now(timezone.utc)
 
+    async def is_active(self, connection_id: str, chat_id: int) -> bool:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT 1 FROM streak_activations
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (connection_id, chat_id),
+            )
+            return await cursor.fetchone() is not None
+
+    async def activate(self, connection_id: str, chat_id: int) -> None:
+        now = self._now().isoformat()
+        async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                SELECT 1 FROM streak_activations
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (connection_id, chat_id),
+            )
+            already_active = await cursor.fetchone() is not None
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO streak_activations(
+                    business_connection_id, chat_id, activated_at
+                ) VALUES (?, ?, ?)
+                """,
+                (connection_id, chat_id, now),
+            )
+            if already_active:
+                await db.execute(
+                    """
+                    UPDATE streaks SET is_enabled=1, updated_at=?
+                    WHERE business_connection_id=? AND chat_id=?
+                    """,
+                    (now, connection_id, chat_id),
+                )
+            else:
+                await db.execute(
+                    """
+                    UPDATE streaks SET
+                        is_enabled=1,
+                        owner_sent_day=NULL,
+                        peer_sent_day=NULL,
+                        updated_at=?
+                    WHERE business_connection_id=? AND chat_id=?
+                    """,
+                    (now, connection_id, chat_id),
+                )
+            await db.commit()
+
     async def get_owner_target(self, connection_id: str) -> tuple[int, int] | None:
         async with self.database.connect() as db:
             cursor = await db.execute(
