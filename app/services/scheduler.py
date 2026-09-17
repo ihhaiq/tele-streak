@@ -121,31 +121,23 @@ class StreakScheduler:
                     day_before_missed=day_before,
                 )
                 if result == "broken":
-                    notice = await self.stickers.send_broken_notice(
+                    notice_invoked = await self.guests.summon(
+                        event="broken_notice",
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
                     )
-                    sticker_sent = await self.guests.summon(
-                        event="broken",
-                        connection_id=streak.business_connection_id,
-                        chat_id=streak.chat_id,
-                        reply_to_message_id=notice.message_id,
-                    )
-                    if not sticker_sent:
-                        await self.stickers.send_special(
-                            connection_id=streak.business_connection_id,
-                            chat_id=streak.chat_id,
-                            name="broken",
-                            revive_available=False,
-                            reply_to_message_id=notice.message_id,
+                    if not notice_invoked:
+                        logger.error(
+                            "STREAK_BROKEN_GUEST_NOTICE_INVOKE_FAILED connection=%s chat=%s",
+                            streak.business_connection_id,
+                            streak.chat_id,
                         )
 
                     logger.info(
-                        "STREAK_BROKEN connection=%s chat=%s notice=%s guest_sticker=%s",
+                        "STREAK_BROKEN connection=%s chat=%s guest_notice=%s",
                         streak.business_connection_id,
                         streak.chat_id,
-                        notice.message_id,
-                        sticker_sent,
+                        notice_invoked,
                     )
                 elif result == "frozen":
                     logger.info(
