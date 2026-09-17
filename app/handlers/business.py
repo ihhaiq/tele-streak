@@ -169,9 +169,10 @@ def build_router(
 
         sender_id = message.from_user.id
         record = await repository.get_streak(connection_id, message.chat.id)
+        active = await activations.is_active(connection_id, message.chat.id)
 
         if is_start_streak_query(message.text) and sender_id == owner_id:
-            if record is not None and record.is_enabled:
+            if active and record is not None and record.is_enabled:
                 await stickers.send_notice_text(
                     connection_id=connection_id,
                     chat_id=message.chat.id,
@@ -193,7 +194,7 @@ def build_router(
             )
             return
 
-        if record is None:
+        if not active:
             if sender_id == owner_id:
                 return
 
@@ -244,7 +245,7 @@ def build_router(
                 )
             return
 
-        if not record.is_enabled:
+        if record is not None and not record.is_enabled:
             return
 
         completion = await streaks.register_message(message)
