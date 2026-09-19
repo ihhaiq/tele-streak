@@ -59,6 +59,22 @@ def is_revive_streak_query(text: str | None) -> bool:
     }
 
 
+def parse_add_streak_days(text: str | None) -> int | None:
+    normalized = _normalize_text(text)
+    prefixes = ("اضف ستريك", "أضف ستريك", "add streak", "/addstreak")
+    for prefix in prefixes:
+        if normalized == prefix:
+            return 1
+        if normalized.startswith(prefix + " "):
+            raw_days = normalized[len(prefix):].strip()
+            try:
+                days = int(raw_days)
+            except ValueError:
+                return 0
+            return days if 1 <= days <= 10_000 else 0
+    return None
+
+
 def build_router(
     streaks: StreakService,
     stickers: StickerService,
@@ -148,6 +164,62 @@ def build_router(
                     chat_id=message.chat.id,
                     text="تعذر قراءة الستريك مؤقتًا. تأكد أن اتصال الأعمال مفعّل ثم حاول مجددًا.",
                 )
+            return
+
+        add_days = parse_add_streak_days(message.text)
+        if add_days is not None:
+            if not connection_id or message.from_user is None:
+                return
+            owner_id = await streaks.get_owner_id(message)
+            if owner_id is None or message.from_user.id != owner_id:
+                return
+            if add_days <= 0:
+                await stickers.send_notice_text(
+                    connection_id=connection_id,
+                    chat_id=message.chat.id,
+                    text="استخدم: «اضف ستريك» لإضافة يوم، أو «اضف ستريك 5» لإضافة 5 أيام.",
+                )
+                return
+
+            active = await activations.is_active(connection_id, message.chat.id)
+            record = await repository.get_streak(connection_id, message.chat.id)
+            if not active or record is None or not record.is_enabled:
+                await stickers.send_notice_text(
+                    connection_id=connection_id,
+                    chat_id=message.chat.id,
+                    text="🔥 ماكو ستريك مفعّل بهذه المحادثة حتى أرفعه. ابدأ الستريك أولًا.",
+                )
+                return
+
+            updated = await repository.add_streak_days(
+                connection_id=connection_id,
+                chat_id=message.chat.id,
+                days=add_days,
+            )
+            if updated is None:
+                await stickers.send_notice_text(
+                    connection_id=connection_id,
+                    chat_id=message.chat.id,
+                    text="تعذر تعديل الستريك حاليًا.",
+                )
+                return
+
+            await stickers.send_notice_text(
+                connection_id=connection_id,
+                chat_id=message.chat.id,
+                text=(
+                    f"🔥 تمت إضافة {add_days} للستريك. "
+                    f"الستريك الآن: {updated.current_streak} يوم."
+                ),
+            )
+            logger.info(
+                "STREAK_MANUAL_ADD connection=%s chat=%s owner=%s added=%s current=%s",
+                connection_id,
+                message.chat.id,
+                owner_id,
+                add_days,
+                updated.current_streak,
+            )
             return
 
         if is_revive_streak_query(message.text):

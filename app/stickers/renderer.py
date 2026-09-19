@@ -43,7 +43,7 @@ class StickerRenderer:
         stat = pose.image.stat()
         fingerprint = f"{stat.st_mtime_ns}:{stat.st_size}"
         digest = hashlib.sha1(
-            f"{pose_id}:{days}:{fingerprint}:v3".encode()
+            f"{pose_id}:{days}:{fingerprint}:v4-centered".encode()
         ).hexdigest()[:16]
         output = self.rendered_dir / f"streak_{days}_{pose_id}_{digest}.webp"
         if output.is_file():

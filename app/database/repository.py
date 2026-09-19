@@ -98,6 +98,84 @@ class Repository:
             updated_at=str(row["updated_at"]),
         )
 
+    async def _move_owner_state_to_connection(
+        self,
+        db,
+        *,
+        connection_id: str,
+        owner_user_id: int,
+        now: str,
+    ) -> str | None:
+        """Move stale state to an enabled connection when its own state is empty."""
+        cursor = await db.execute(
+            """
+            SELECT 1
+            WHERE EXISTS (
+                SELECT 1 FROM streaks
+                WHERE business_connection_id=?
+            ) OR EXISTS (
+                SELECT 1 FROM streak_activations
+                WHERE business_connection_id=?
+            )
+            """,
+            (connection_id, connection_id),
+        )
+        if await cursor.fetchone() is not None:
+            return None
+
+        cursor = await db.execute(
+            """
+            SELECT b.business_connection_id
+            FROM business_connections AS b
+            WHERE b.owner_user_id=?
+              AND b.business_connection_id<>?
+              AND (
+                  EXISTS (
+                      SELECT 1 FROM streaks AS s
+                      WHERE s.business_connection_id=b.business_connection_id
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM streak_activations AS a
+                      WHERE a.business_connection_id=b.business_connection_id
+                  )
+              )
+            ORDER BY b.updated_at DESC
+            LIMIT 1
+            """,
+            (owner_user_id, connection_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+
+        old_connection_id = str(row["business_connection_id"])
+        for table in (
+            "streaks",
+            "streak_activations",
+            "processed_messages",
+            "freeze_history",
+            "guest_streak_requests",
+            "streak_revive_requests",
+            "streak_start_requests",
+        ):
+            await db.execute(
+                f"""
+                UPDATE {table}
+                SET business_connection_id=?
+                WHERE business_connection_id=?
+                """,
+                (connection_id, old_connection_id),
+            )
+        await db.execute(
+            """
+            UPDATE business_connections
+            SET is_enabled=0, updated_at=?
+            WHERE business_connection_id=?
+            """,
+            (now, old_connection_id),
+        )
+        return old_connection_id
+
     async def upsert_connection(
         self,
         connection_id: str,
@@ -106,7 +184,10 @@ class Repository:
         is_enabled: bool,
         timezone_name: str = "Asia/Baghdad",
     ) -> None:
+        """Persist a Business connection and preserve streaks across reconnects."""
+        now = self._now()
         async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
             await db.execute(
                 """
                 INSERT INTO business_connections(
@@ -125,9 +206,16 @@ class Repository:
                     user_chat_id,
                     int(is_enabled),
                     timezone_name,
-                    self._now(),
+                    now,
                 ),
             )
+            if is_enabled:
+                await self._move_owner_state_to_connection(
+                    db,
+                    connection_id=connection_id,
+                    owner_user_id=owner_user_id,
+                    now=now,
+                )
             await db.commit()
 
     async def get_owner_id(self, connection_id: str) -> int | None:
@@ -141,7 +229,22 @@ class Repository:
                 (connection_id,),
             )
             row = await cursor.fetchone()
-            return int(row["owner_user_id"]) if row else None
+            if row is None:
+                return None
+
+            owner_user_id = int(row["owner_user_id"])
+            await db.execute("BEGIN IMMEDIATE")
+            moved_from = await self._move_owner_state_to_connection(
+                db,
+                connection_id=connection_id,
+                owner_user_id=owner_user_id,
+                now=self._now(),
+            )
+            if moved_from is not None:
+                await db.commit()
+            else:
+                await db.rollback()
+            return owner_user_id
 
     async def get_streak(
         self,
@@ -157,6 +260,45 @@ class Repository:
                 (connection_id, chat_id),
             )
             row = await cursor.fetchone()
+            return self._streak_from_row(row) if row else None
+
+    async def add_streak_days(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        days: int,
+    ) -> StreakRecord | None:
+        if days <= 0:
+            raise ValueError("days must be positive")
+
+        now = self._now()
+        async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                UPDATE streaks
+                SET current_streak=current_streak + ?,
+                    longest_streak=MAX(longest_streak, current_streak + ?),
+                    completed_days=completed_days + ?,
+                    updated_at=?
+                WHERE business_connection_id=? AND chat_id=? AND is_enabled=1
+                """,
+                (days, days, days, now, connection_id, chat_id),
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                return None
+
+            cursor = await db.execute(
+                """
+                SELECT * FROM streaks
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (connection_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            await db.commit()
             return self._streak_from_row(row) if row else None
 
     async def create_guest_streak_request(

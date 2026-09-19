@@ -6,14 +6,18 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, TelegramRetryAfter, TelegramServerError
 from aiogram.types import FSInputFile, InputSticker
 
+from app.stickers.canvas import fit_to_canvas
 from app.stickers.pack_builder import ReadyPackBuilder
 
 logger = logging.getLogger(__name__)
 PACK_SIZE = 120
+PACK_ASSET_VERSION = 2
 MAX_ATTEMPTS = 5
 
 
@@ -21,7 +25,7 @@ def sticker_set_name(bot_username: str, part: int = 1) -> str:
     safe = re.sub(r"[^a-z0-9_]", "", bot_username.lower())
     if not safe:
         raise ValueError("bot username cannot produce a sticker-set name")
-    return f"jake_streak_shared_{part}_by_{safe}"
+    return f"jake_streak_shared_v{PACK_ASSET_VERSION}_{part}_by_{safe}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,13 +48,47 @@ class StickerPack:
         self._sync_task: asyncio.Task[None] | None = None
         sheet = ready_dir.parents[2] / "jake" / "generated" / "poses_sheet.webp"
         self.builder = ReadyPackBuilder(sheet, ready_dir)
+        self.normalized_dir = ready_dir.parent / f"normalized-v{PACK_ASSET_VERSION}"
+
+    def _normalize_asset(self, key: str, source: Path) -> Path:
+        """Build a centered upload copy without mutating reviewed source files."""
+        self.normalized_dir.mkdir(parents=True, exist_ok=True)
+        output = self.normalized_dir / f"{key}.webp"
+
+        source_stat = source.stat()
+        if output.is_file() and output.stat().st_mtime_ns >= source_stat.st_mtime_ns:
+            return output
+
+        with Image.open(source) as image:
+            fit_to_canvas(image.convert("RGBA")).save(
+                output,
+                "WEBP",
+                quality=92,
+                method=6,
+            )
+        return output
 
     def _assets(self) -> list[PackAsset]:
-        numbered = [PackAsset(str(day), self.ready_dir / f"{day:03}.webp", "🔥") for day in range(1, 251)]
+        numbered = [
+            PackAsset(
+                str(day),
+                self._normalize_asset(str(day), self.ready_dir / f"{day:03}.webp"),
+                "🔥",
+            )
+            for day in range(1, 251)
+        ]
         special = self.ready_dir.parent / "special"
         return numbered + [
-            PackAsset("warning", special / "warning.webp", "⏰"),
-            PackAsset("broken", special / "broken.webp", "💔"),
+            PackAsset(
+                "warning",
+                self._normalize_asset("warning", special / "warning.webp"),
+                "⏰",
+            ),
+            PackAsset(
+                "broken",
+                self._normalize_asset("broken", special / "broken.webp"),
+                "💔",
+            ),
         ]
 
     @staticmethod
