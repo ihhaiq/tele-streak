@@ -1,4 +1,5 @@
 from app.handlers.business import (
+    parse_add_streak_days,
     is_revive_streak_query,
     is_start_streak_query,
     is_streak_query,
@@ -47,3 +48,13 @@ def test_revive_streak_query_rejects_normal_messages():
     assert not is_revive_streak_query("احياء")
     assert not is_revive_streak_query("الستريك")
     assert not is_revive_streak_query(None)
+
+
+def test_add_streak_command_parsing():
+    assert parse_add_streak_days("اضف ستريك") == 1
+    assert parse_add_streak_days("أضف ستريك 5") == 5
+    assert parse_add_streak_days("add streak 12") == 12
+    assert parse_add_streak_days("/addstreak 3") == 3
+    assert parse_add_streak_days("اضف ستريك صفر") == 0
+    assert parse_add_streak_days("اضف ستريك 0") == 0
+    assert parse_add_streak_days("شلونك") is None
