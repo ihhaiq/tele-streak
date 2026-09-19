@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 PACK_SIZE = 120
 PACK_ASSET_VERSION = 2
 MAX_ATTEMPTS = 5
+UPLOAD_PAUSE_SECONDS = 0.75
+PART_PAUSE_SECONDS = 1.5
 
 
 def sticker_set_name(bot_username: str, part: int = 1) -> str:
@@ -122,8 +124,10 @@ class StickerPack:
         async with self._lock:
             if len(self._file_ids) >= 252:
                 return
+            # Image generation + normalization is CPU/disk heavy. Keep it off
+            # the bot event loop so commands such as "ستريك" remain responsive.
             await asyncio.to_thread(self.builder.ensure)
-            assets = self._assets()
+            assets = await asyncio.to_thread(self._assets)
             if any(not asset.path.is_file() for asset in assets):
                 raise RuntimeError("sticker pack has missing assets")
             me = await self.bot.get_me()
@@ -152,13 +156,20 @@ class StickerPack:
                         self.bot.add_sticker_to_set,
                         user_id=owner_id, name=name, sticker=self._input(asset),
                     )
-                    await asyncio.sleep(0.08)
+                    # Sticker-set writes can trigger bot-wide Telegram rate
+                    # limits. Yield generously so interactive bot traffic keeps
+                    # priority while a large pack is being synchronized.
+                    await asyncio.sleep(UPLOAD_PAUSE_SECONDS)
                 if uploaded < len(part):
                     logger.info("STICKER_PACK_SYNCED name=%s added=%s total=%s", name, len(part) - uploaded, len(part))
                     sticker_set = await self._retry(self.bot.get_sticker_set, name)
 
                 for asset, sticker in zip(part, sticker_set.stickers, strict=False):
                     self._file_ids[asset.key] = sticker.file_id
+
+                # A full set part is up to 120 writes. Give Telegram and the
+                # regular message handlers breathing room between parts.
+                await asyncio.sleep(PART_PAUSE_SECONDS)
 
     async def file_id(self, connection_id: str, days: int) -> str | None:
         await self.ensure(connection_id)
