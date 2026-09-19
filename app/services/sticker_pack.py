@@ -44,13 +44,47 @@ class StickerPack:
         self._sync_task: asyncio.Task[None] | None = None
         sheet = ready_dir.parents[2] / "jake" / "generated" / "poses_sheet.webp"
         self.builder = ReadyPackBuilder(sheet, ready_dir)
+        self.normalized_dir = ready_dir.parent / "normalized"
+
+    def _normalize_asset(self, key: str, source: Path) -> Path:
+        """Build a centered upload copy without mutating reviewed source files."""
+        self.normalized_dir.mkdir(parents=True, exist_ok=True)
+        output = self.normalized_dir / f"{key}.webp"
+
+        source_stat = source.stat()
+        if output.is_file() and output.stat().st_mtime_ns >= source_stat.st_mtime_ns:
+            return output
+
+        with Image.open(source) as image:
+            fit_to_canvas(image.convert("RGBA")).save(
+                output,
+                "WEBP",
+                quality=92,
+                method=6,
+            )
+        return output
 
     def _assets(self) -> list[PackAsset]:
-        numbered = [PackAsset(str(day), self.ready_dir / f"{day:03}.webp", "🔥") for day in range(1, 251)]
+        numbered = [
+            PackAsset(
+                str(day),
+                self._normalize_asset(str(day), self.ready_dir / f"{day:03}.webp"),
+                "🔥",
+            )
+            for day in range(1, 251)
+        ]
         special = self.ready_dir.parent / "special"
         return numbered + [
-            PackAsset("warning", special / "warning.webp", "⏰"),
-            PackAsset("broken", special / "broken.webp", "💔"),
+            PackAsset(
+                "warning",
+                self._normalize_asset("warning", special / "warning.webp"),
+                "⏰",
+            ),
+            PackAsset(
+                "broken",
+                self._normalize_asset("broken", special / "broken.webp"),
+                "💔",
+            ),
         ]
 
     @staticmethod
