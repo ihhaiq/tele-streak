@@ -12,7 +12,7 @@ from aiogram.types import (
     Message,
 )
 
-from app.adventures.views import navigation, page_text, rich_page
+from app.adventures.views import navigation, page_text, rich_page, rich_story_page
 from app.services.rich_status import (
     build_streak_fallback_text,
     build_streak_rich_message,
@@ -50,7 +50,7 @@ def story_menu(owner, chat):
     )
 
 
-async def edit_page(callback, bot, rich, text, keyboard):
+async def edit_page(callback, bot, rich, text, fallback_keyboard):
     kwargs = (
         {"inline_message_id": callback.inline_message_id}
         if callback.inline_message_id
@@ -61,12 +61,16 @@ async def edit_page(callback, bot, rich, text, keyboard):
         }
     )
     try:
-        await bot.edit_message_text(**kwargs, rich_message=rich, reply_markup=keyboard)
+        await bot.edit_message_text(**kwargs, rich_message=rich, reply_markup=None)
     except TelegramBadRequest as error:
         if "message is not modified" in str(error).lower():
             return True
         try:
-            await bot.edit_message_text(**kwargs, text=text, reply_markup=keyboard)
+            await bot.edit_message_text(
+                **kwargs,
+                text=text,
+                reply_markup=fallback_keyboard,
+            )
         except TelegramBadRequest:
             return False
     return True
@@ -168,14 +172,7 @@ def build_router(repository, adventures) -> Router:
                 "اختار صورة أو فيديو. بوت الأعمال راح يرفع المعاينة بنفس المحادثة "
                 "ومعاها زر «نشر الستوري». ما ينشر شي قبل ما تضغط الزر."
             )
-            rich = InputRichMessage(
-                html=(
-                    "<h1>🎬 مشاركة ستوري</h1>"
-                    "<p>اختار صورة أو فيديو. بوت الأعمال راح يرفع المعاينة بنفس المحادثة "
-                    "ومعاها زر «نشر الستوري». ما ينشر شي قبل ما تضغط الزر.</p>"
-                ),
-                is_rtl=True,
-            )
+            rich = rich_story_page(owner, chat)
             keyboard = story_menu(owner, chat)
         else:
             text = page_text(profile, state, action)
