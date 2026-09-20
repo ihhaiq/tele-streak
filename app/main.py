@@ -31,7 +31,6 @@ from app.services.streak_service import StreakService
 from app.services.streak_test_service import StreakTestService
 from app.stickers.poses import PoseCatalog
 from app.stickers.renderer import StickerRenderer
-from app.story.media_server import StoryMediaServer
 
 
 async def main() -> None:
@@ -72,22 +71,11 @@ async def main() -> None:
         bot,
         repository,
         guests,
-        music_path=settings.story_music_path,
-        public_base_url=settings.public_base_url,
         share_dir=settings.rendered_dir / "story_share",
         share_ttl_seconds=settings.story_share_ttl_seconds,
+        youtube_cookie_file=settings.story_youtube_cookie_file,
+        music_attempts=settings.story_music_attempts,
     )
-    story_media = None
-    if settings.public_base_url:
-        story_media = StoryMediaServer(
-            adventures=adventures,
-            public_base_url=settings.public_base_url,
-        )
-        await story_media.start("0.0.0.0", settings.http_port)
-    else:
-        logging.getLogger(__name__).warning(
-            "Story Guest preview is disabled until Railway has a public domain."
-        )
     streak_tests = StreakTestService(repository)
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
@@ -123,8 +111,6 @@ async def main() -> None:
         scheduler_task.cancel()
         with suppress(asyncio.CancelledError):
             await scheduler_task
-        if story_media is not None:
-            await story_media.close()
         await bot.session.close()
         await database.close()
 
