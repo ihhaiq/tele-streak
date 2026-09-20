@@ -13,6 +13,7 @@ from app.database.activation_repository import StreakActivationRepository
 from app.database.engine import Database
 from app.database.repository import Repository
 from app.database.revive_request_repository import ReviveRequestRepository
+from app.database.streak_mode_repository import StreakModeRepository
 from app.handlers.business import build_router as business_router
 from app.handlers.callbacks import build_router as callbacks_router
 from app.handlers.connection import build_router as connection_router
@@ -42,6 +43,7 @@ async def main() -> None:
     repository = Repository(database)
     activations = StreakActivationRepository(database)
     revive_requests = ReviveRequestRepository(database)
+    streak_modes = StreakModeRepository(database)
     session = AiohttpSession(timeout=60)
     bot = Bot(
         settings.bot_token,
@@ -68,11 +70,11 @@ async def main() -> None:
     dp.include_router(connection_router(repository, streaks))
     dp.include_router(streak_test_router(repository, stickers, guests, streak_tests))
     dp.include_router(
-        business_router(streaks, stickers, repository, activations, guests)
+        business_router(streaks, stickers, repository, activations, guests, streak_modes)
     )
     dp.include_router(guest_router(repository, stickers, revive_requests, guests))
     dp.include_router(guest_callbacks_router(repository, revive_requests))
-    dp.include_router(callbacks_router(repository, activations, streaks))
+    dp.include_router(callbacks_router(repository, activations, streaks, streak_modes))
     dp.include_router(private_router(repository, stickers))
 
     scheduler = StreakScheduler(repository, stickers, guests)
