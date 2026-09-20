@@ -142,8 +142,12 @@ def build_router(
                 )
                 if not sent:
                     timezone_name = await repository.get_connection_timezone(connection_id)
+                    owner_user_id = await repository.get_owner_id(connection_id)
+                    if owner_user_id is None:
+                        return
                     await stickers.send_status(
                         connection_id=connection_id,
+                        owner_user_id=owner_user_id,
                         chat_id=message.chat.id,
                         current=status.current,
                         longest=status.longest,
