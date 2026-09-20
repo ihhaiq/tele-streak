@@ -23,6 +23,8 @@ class Settings:
     sticker_set_owner_id: int | None
     sticker_set_title: str
     story_youtube_cookie_file: Path | None = None
+    story_youtube_cookies: str | None = None
+    story_youtube_cookies_b64: str | None = None
     story_youtube_pot_provider_home: Path | None = None
     story_music_attempts: int = 3
     story_share_ttl_seconds: int = 900
@@ -60,6 +62,10 @@ def load_settings() -> Settings:
     rendered_dir.mkdir(parents=True, exist_ok=True)
 
     youtube_cookie = os.getenv("STORY_YOUTUBE_COOKIE_FILE", "").strip()
+    youtube_cookies_raw = os.getenv("STORY_YOUTUBE_COOKIES")
+    if youtube_cookies_raw is not None and not youtube_cookies_raw.strip():
+        youtube_cookies_raw = None
+    youtube_cookies_b64 = os.getenv("STORY_YOUTUBE_COOKIES_B64", "").strip()
     pot_home_raw = os.getenv(
         "STORY_YOUTUBE_POT_PROVIDER_HOME",
         "/opt/bgutil-ytdlp-pot-provider/server",
@@ -75,6 +81,8 @@ def load_settings() -> Settings:
         rendered_dir=rendered_dir,
         message_effect_id=effect_id or None,
         story_youtube_cookie_file=Path(youtube_cookie) if youtube_cookie else None,
+        story_youtube_cookies=youtube_cookies_raw,
+        story_youtube_cookies_b64=youtube_cookies_b64 or None,
         story_youtube_pot_provider_home=pot_home,
         story_music_attempts=max(1, min(_int("STORY_MUSIC_ATTEMPTS", 3), 6)),
         story_share_ttl_seconds=max(60, min(_int("STORY_SHARE_TTL_SECONDS", 900), 3600)),

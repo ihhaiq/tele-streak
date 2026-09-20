@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
+import os
 import random
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,10 +68,17 @@ class YouTubeStoryMusic:
         self,
         *,
         cookie_file: Path | None = None,
+        cookies_raw: str | None = None,
+        cookies_b64: str | None = None,
         pot_provider_home: Path | None = None,
         attempts: int = 3,
     ):
-        self.cookie_file = cookie_file if cookie_file and cookie_file.is_file() else None
+        self._temporary_cookie_file: Path | None = None
+        self.cookie_file = self._resolve_cookie_file(
+            cookie_file,
+            cookies_raw,
+            cookies_b64,
+        )
         self.pot_provider_home = (
             pot_provider_home
             if pot_provider_home and pot_provider_home.is_dir()
@@ -75,6 +86,90 @@ class YouTubeStoryMusic:
         )
         self.attempts = max(1, min(int(attempts), 6))
         self._random = random.SystemRandom()
+
+    @staticmethod
+    def _normalize_cookie_text(text: str, source_name: str) -> str:
+        normalized = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+        first = normalized.split("\n", 1)[0].strip()
+        if first not in {
+            "# Netscape HTTP Cookie File",
+            "# HTTP Cookie File",
+        }:
+            raise RuntimeError(
+                f"{source_name} must contain Netscape cookies.txt content"
+            )
+        return normalized if normalized.endswith("\n") else normalized + "\n"
+
+    def _write_temporary_cookie_file(self, text: str, source: str) -> Path:
+        fd, raw_path = tempfile.mkstemp(
+            prefix="streak-youtube-cookies-",
+            suffix=".txt",
+        )
+        path = Path(raw_path)
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
+                output.write(text)
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
+        self._temporary_cookie_file = path
+        logger.info("STORY_YOUTUBE_COOKIES_READY source=%s", source)
+        return path
+
+    def _resolve_cookie_file(
+        self,
+        cookie_file: Path | None,
+        cookies_raw: str | None,
+        cookies_b64: str | None,
+    ) -> Path | None:
+        if cookies_raw:
+            normalized = self._normalize_cookie_text(
+                cookies_raw,
+                "STORY_YOUTUBE_COOKIES",
+            )
+            return self._write_temporary_cookie_file(normalized, "railway_raw")
+
+        if cookies_b64:
+            compact = "".join(cookies_b64.split())
+            try:
+                raw = base64.b64decode(compact, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise RuntimeError(
+                    "STORY_YOUTUBE_COOKIES_B64 is not valid Base64"
+                ) from error
+            try:
+                text = raw.decode("utf-8-sig")
+            except UnicodeDecodeError as error:
+                raise RuntimeError(
+                    "STORY_YOUTUBE_COOKIES_B64 must contain a UTF-8 cookies.txt file"
+                ) from error
+
+            normalized = self._normalize_cookie_text(
+                text,
+                "STORY_YOUTUBE_COOKIES_B64",
+            )
+            return self._write_temporary_cookie_file(normalized, "railway_base64")
+
+        if cookie_file and cookie_file.is_file():
+            logger.info("STORY_YOUTUBE_COOKIES_READY source=file")
+            return cookie_file
+
+        logger.warning("STORY_YOUTUBE_COOKIES_MISSING")
+        return None
+
+    def close(self) -> None:
+        if self._temporary_cookie_file is None:
+            return
+        try:
+            self._temporary_cookie_file.unlink(missing_ok=True)
+        except OSError:
+            logger.debug(
+                "STORY_YOUTUBE_COOKIE_CLEANUP_FAILED path=%s",
+                self._temporary_cookie_file,
+            )
+        finally:
+            self._temporary_cookie_file = None
 
     def _modes(self) -> tuple[_ClientMode, ...]:
         modes: list[_ClientMode] = []
@@ -298,5 +393,10 @@ class YouTubeStoryMusic:
                 )
 
         detail = self._brief_error(last_error) if last_error else "unknown error"
+        if "sign in to confirm you’re not a bot" in detail.casefold() or "sign in to confirm you're not a bot" in detail.casefold():
+            logger.error(
+                "STORY_YOUTUBE_AUTH_REQUIRED cookies_configured=%s",
+                bool(self.cookie_file),
+            )
         logger.error("STORY_YOUTUBE_ALL_FAILED error=%s", detail)
         raise RuntimeError(f"تعذر جلب أغنية من YouTube: {detail}") from last_error

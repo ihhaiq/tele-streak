@@ -74,6 +74,8 @@ async def main() -> None:
         share_dir=settings.rendered_dir / "story_share",
         share_ttl_seconds=settings.story_share_ttl_seconds,
         youtube_cookie_file=settings.story_youtube_cookie_file,
+        youtube_cookies=settings.story_youtube_cookies,
+        youtube_cookies_b64=settings.story_youtube_cookies_b64,
         youtube_pot_provider_home=settings.story_youtube_pot_provider_home,
         music_attempts=settings.story_music_attempts,
     )
@@ -112,6 +114,7 @@ async def main() -> None:
         scheduler_task.cancel()
         with suppress(asyncio.CancelledError):
             await scheduler_task
+        await adventures.close()
         await bot.session.close()
         await database.close()
 
