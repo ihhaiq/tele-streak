@@ -21,39 +21,29 @@ from app.services.rich_status import (
 logger = logging.getLogger(__name__)
 
 
-def story_menu(owner, chat, links: dict[str, str] | None = None):
-    links = links or {}
-
-    def story_button(text: str, kind: str, fallback: str) -> InlineKeyboardButton:
-        url = links.get(kind)
-        if url:
-            return InlineKeyboardButton(text=text, url=url)
-        return InlineKeyboardButton(text=text, callback_data=fallback)
-
+def story_menu(owner, chat):
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                story_button(
-                    "صورة ستوري 🖼️",
-                    "image",
-                    f"adv:image:{owner}:{chat}",
+                InlineKeyboardButton(
+                    text="صورة ستوري 🖼️",
+                    callback_data=f"adv:image:{owner}:{chat}",
                 )
             ],
             [
-                story_button(
-                    "٥ ثواني 🎬",
-                    "video5",
-                    f"adv:video5:{owner}:{chat}",
+                InlineKeyboardButton(
+                    text="٥ ثواني 🎬",
+                    callback_data=f"adv:video5:{owner}:{chat}",
                 ),
-                story_button(
-                    "١٠ ثواني 🎬",
-                    "video10",
-                    f"adv:video10:{owner}:{chat}",
+                InlineKeyboardButton(
+                    text="١٠ ثواني 🎬",
+                    callback_data=f"adv:video10:{owner}:{chat}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="رجوع", callback_data=f"adv:tasks:{owner}:{chat}"
+                    text="رجوع",
+                    callback_data=f"adv:tasks:{owner}:{chat}",
                 )
             ],
         ]
@@ -78,12 +68,11 @@ async def edit_page(callback, bot, rich, text, keyboard):
         try:
             await bot.edit_message_text(**kwargs, text=text, reply_markup=keyboard)
         except TelegramBadRequest:
-            # أزرار ملصق الاحتفال تحتاج رسالة جديدة، لأن الملصق ما يتحول إلى نص.
             return False
     return True
 
 
-def build_router(repository, adventures, story_web=None) -> Router:
+def build_router(repository, adventures) -> Router:
     router = Router(name="adventures")
 
     @router.callback_query(F.data.startswith("adv:"))
@@ -94,6 +83,7 @@ def build_router(repository, adventures, story_web=None) -> Router:
         except (ValueError, TypeError):
             await callback.answer()
             return
+
         if action not in {
             "tasks",
             "compare",
@@ -106,30 +96,42 @@ def build_router(repository, adventures, story_web=None) -> Router:
         }:
             await callback.answer()
             return
+
         record = await repository.get_owner_streak(owner, chat)
         if record is None or callback.from_user.id not in {
             owner,
             record.peer_user_id or record.chat_id,
         }:
-            await callback.answer("هاي مغامرة خاصة بطرفي الستريك 🫠", show_alert=True)
+            await callback.answer(
+                "هاي مغامرة خاصة بطرفي الستريك 🫠",
+                show_alert=True,
+            )
             return
+
         if not callback.inline_message_id and not isinstance(callback.message, Message):
             await callback.answer()
             return
+
         if action == "image" or action.startswith("video"):
             if not record.is_enabled:
                 await callback.answer("فعّلوا الستريك أولًا.", show_alert=True)
                 return
-            await callback.answer("Jake دا يجهز الستوري 🎨")
+            await callback.answer("Jake دا يجهز معاينة الستوري 🎨")
             try:
-                error = (
-                    await adventures.send_story_image(record, owner)
-                    if action == "image"
-                    else await adventures.send_story(record, owner, int(action[5:]))
+                reply_to = (
+                    callback.message.message_id
+                    if isinstance(callback.message, Message)
+                    else None
+                )
+                error = await adventures.prepare_story_preview(
+                    record,
+                    owner,
+                    action,
+                    reply_to_message_id=reply_to,
                 )
             except Exception:
-                logger.exception("STORY_RENDER_OR_SEND_FAILED")
-                error = "تعذر تجهيز الستوري هالمرة، جرب بعد شوي 🎨"
+                logger.exception("STORY_PREVIEW_FAILED")
+                error = "تعذر تجهيز معاينة الستوري هالمرة، جرب بعد شوي 🎨"
             if error:
                 await bot.send_message(
                     chat_id=record.chat_id,
@@ -154,45 +156,32 @@ def build_router(repository, adventures, story_web=None) -> Router:
                 adventure_profile=profile,
             )
             rich = build_streak_rich_message(
-                **values, owner_user_id=owner, chat_id=chat
+                **values,
+                owner_user_id=owner,
+                chat_id=chat,
             )
             text = build_streak_fallback_text(**values)
             keyboard = navigation(owner, chat)
         elif action == "story":
-            links = story_web.links(owner, chat) if story_web is not None else {}
-            if links:
-                text = (
-                    "🎬 مشاركة ستوري\n"
-                    "اختار صورة أو فيديو، وTelegram راح يفتح لوحة الستوري الأصلية "
-                    "والمحتوى جاهز حتى تراجعه وتنشره."
-                )
-                rich = InputRichMessage(
-                    html=(
-                        "<h1>🎬 مشاركة ستوري</h1>"
-                        "<p>اختار صورة أو فيديو، وTelegram راح يفتح لوحة الستوري "
-                        "الأصلية والمحتوى جاهز حتى تراجعه وتنشره.</p>"
-                    ),
-                    is_rtl=True,
-                )
-            else:
-                text = (
-                    "🎬 مشاركة ستوري\n"
-                    "اختار صورة ستوري مباشرة، أو فيديو ٥/١٠ ثواني. "
-                    "Jake يلعب بكرتين بيهن صوركم وأسماءكم."
-                )
-                rich = InputRichMessage(
-                    html=(
-                        "<h1>🎬 مشاركة ستوري</h1>"
-                        "<p>اختار صورة ستوري مباشرة، أو فيديو ٥/١٠ ثواني. "
-                        "Jake يلعب بكرتين بيهن صوركم وأسماءكم.</p>"
-                    ),
-                    is_rtl=True,
-                )
-            keyboard = story_menu(owner, chat, links)
+            text = (
+                "🎬 مشاركة ستوري\n"
+                "اختار صورة أو فيديو. البوت بوضع الضيف راح يرسل المعاينة "
+                "ومعاها زر «نشر الستوري». ما ينشر شي قبل ما تضغط الزر."
+            )
+            rich = InputRichMessage(
+                html=(
+                    "<h1>🎬 مشاركة ستوري</h1>"
+                    "<p>اختار صورة أو فيديو. البوت بوضع الضيف راح يرسل المعاينة "
+                    "ومعاها زر «نشر الستوري». ما ينشر شي قبل ما تضغط الزر.</p>"
+                ),
+                is_rtl=True,
+            )
+            keyboard = story_menu(owner, chat)
         else:
             text = page_text(profile, state, action)
             rich = rich_page(profile, state, action, owner, chat)
             keyboard = navigation(owner, chat)
+
         await callback.answer()
         if not await edit_page(callback, bot, rich, text, keyboard):
             destination = dict(
@@ -201,9 +190,15 @@ def build_router(repository, adventures, story_web=None) -> Router:
             )
             try:
                 await bot.send_rich_message(
-                    **destination, rich_message=rich, reply_markup=keyboard
+                    **destination,
+                    rich_message=rich,
+                    reply_markup=keyboard,
                 )
             except TelegramBadRequest:
-                await bot.send_message(**destination, text=text, reply_markup=keyboard)
+                await bot.send_message(
+                    **destination,
+                    text=text,
+                    reply_markup=keyboard,
+                )
 
     return router
