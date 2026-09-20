@@ -314,7 +314,7 @@ def rich_story_page(owner: int, chat: int) -> InputRichMessage:
             "<h1>🎬 مشاركة ستوري</h1>"
             "<p>اختار نوع المعاينة. بوت الأعمال يرفعها بنفس المحادثة، "
             "وما ينشر شي قبل ما تضغط «نشر الستوري».</p>"
-            "<details open><summary>اختيار المعاينة</summary>"
+            "<details><summary>اختيار المعاينة</summary>"
             + story_actions
             + "</details>"
             "<details><summary>خيارات الستريك</summary>"
