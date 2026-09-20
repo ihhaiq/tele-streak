@@ -114,50 +114,22 @@ class Repository:
         owner_user_id: int,
         now: str,
     ) -> str | None:
-        """Move stale state to an enabled connection when its own state is empty."""
-        cursor = await db.execute(
-            """
-            SELECT 1
-            WHERE EXISTS (
-                SELECT 1 FROM streaks
-                WHERE business_connection_id=?
-            ) OR EXISTS (
-                SELECT 1 FROM streak_activations
-                WHERE business_connection_id=?
+        """Merge every historical Business connection into the active owner link."""
+        rows = await (
+            await db.execute(
+                """
+                SELECT business_connection_id
+                FROM business_connections
+                WHERE owner_user_id=? AND business_connection_id<>?
+                ORDER BY updated_at DESC
+                """,
+                (owner_user_id, connection_id),
             )
-            """,
-            (connection_id, connection_id),
-        )
-        if await cursor.fetchone() is not None:
+        ).fetchall()
+        if not rows:
             return None
 
-        cursor = await db.execute(
-            """
-            SELECT b.business_connection_id
-            FROM business_connections AS b
-            WHERE b.owner_user_id=?
-              AND b.business_connection_id<>?
-              AND (
-                  EXISTS (
-                      SELECT 1 FROM streaks AS s
-                      WHERE s.business_connection_id=b.business_connection_id
-                  )
-                  OR EXISTS (
-                      SELECT 1 FROM streak_activations AS a
-                      WHERE a.business_connection_id=b.business_connection_id
-                  )
-              )
-            ORDER BY b.updated_at DESC
-            LIMIT 1
-            """,
-            (owner_user_id, connection_id),
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-
-        old_connection_id = str(row["business_connection_id"])
-        for table in (
+        tables = (
             "streaks",
             "streak_activations",
             "processed_messages",
@@ -166,24 +138,42 @@ class Repository:
             "streak_revive_requests",
             "streak_start_requests",
             *adventures.TABLES,
-        ):
+        )
+        moved_from: str | None = None
+        for row in rows:
+            old_connection_id = str(row["business_connection_id"])
+            moved_any = False
+            for table in tables:
+                result = await db.execute(
+                    f"""
+                    UPDATE OR IGNORE {table}
+                    SET business_connection_id=?
+                    WHERE business_connection_id=?
+                    """,
+                    (connection_id, old_connection_id),
+                )
+                if result.rowcount:
+                    moved_any = True
+                # If a row conflicts with newer state already stored on the
+                # active connection, keep the active row and drop only the
+                # stale duplicate from the old Business connection.
+                await db.execute(
+                    f"DELETE FROM {table} WHERE business_connection_id=?",
+                    (old_connection_id,),
+                )
+
             await db.execute(
-                f"""
-                UPDATE {table}
-                SET business_connection_id=?
+                """
+                UPDATE business_connections
+                SET is_enabled=0, updated_at=?
                 WHERE business_connection_id=?
                 """,
-                (connection_id, old_connection_id),
+                (now, old_connection_id),
             )
-        await db.execute(
-            """
-            UPDATE business_connections
-            SET is_enabled=0, updated_at=?
-            WHERE business_connection_id=?
-            """,
-            (now, old_connection_id),
-        )
-        return old_connection_id
+            if moved_any and moved_from is None:
+                moved_from = old_connection_id
+
+        return moved_from
 
     async def upsert_connection(
         self,
