@@ -19,5 +19,6 @@ def build_router(repository: Repository, streaks=None) -> Router:
         )
         if streaks is not None:
             streaks.forget_owner(connection.id)
+            streaks.forget_owner_id(connection.user.id)
 
     return router
