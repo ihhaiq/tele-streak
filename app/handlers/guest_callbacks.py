@@ -38,8 +38,48 @@ def _approval_keyboard(token: str) -> InlineKeyboardMarkup:
 def build_router(
     repository: Repository,
     revive_requests: ReviveRequestRepository,
+    adventures=None,
 ) -> Router:
     router = Router(name="guest_callbacks")
+
+    @router.callback_query(F.data.startswith("story_publish:"))
+    async def publish_story(callback: CallbackQuery, bot: Bot) -> None:
+        if adventures is None:
+            await callback.answer(
+                "نشر الستوري غير متاح حاليًا.",
+                show_alert=True,
+            )
+            return
+
+        token = (callback.data or "").split(":", 1)[-1]
+        await callback.answer("جاري نشر الستوري 🚀")
+        result = await adventures.publish_story(token, callback.from_user.id)
+
+        if result.status == "published":
+            final_text = "✅ تم نشر الستوري على حساب الأعمال."
+            if callback.inline_message_id:
+                with suppress(TelegramBadRequest):
+                    await bot.edit_message_caption(
+                        inline_message_id=callback.inline_message_id,
+                        caption=final_text,
+                        reply_markup=None,
+                    )
+            await callback.answer(final_text, show_alert=True)
+            return
+
+        messages = {
+            "expired": "انتهت صلاحية المعاينة. سوي معاينة جديدة.",
+            "unauthorized": "فقط طرفا الستريك يگدرون ينشرون هاي الستوري.",
+            "publishing": "الستوري قيد النشر حاليًا.",
+            "permission": (
+                "فعّل صلاحية إدارة الستوريات للبوت من إعدادات Telegram Business."
+            ),
+            "failed": "Telegram رفض نشر الستوري أو صار خطأ. جرب مرة ثانية.",
+        }
+        await callback.answer(
+            messages.get(result.status, "تعذر نشر الستوري."),
+            show_alert=True,
+        )
 
     @router.callback_query(F.data.startswith("streak_revive:approve:"))
     async def approve_revive(callback: CallbackQuery, bot: Bot) -> None:
