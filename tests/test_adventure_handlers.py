@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import EditMessageText
 from aiogram.types import CallbackQuery, Chat, InputRichMessage, Message, User
 
-from app.handlers.adventures import build_router, edit_page
+from app.handlers.adventures import build_router, edit_page, story_menu
 from app.handlers.business import build_router as business_router
 from app.services.adventure_service import AdventureService
 from app.services.streak_service import Completion
@@ -21,6 +21,12 @@ def callback(user_id=10, data="adv:tasks:10:20"):
         inline_message_id="inline",
         data=data,
     )
+
+
+def test_story_menu_offers_still_image_first():
+    menu = story_menu(10, 20)
+    assert menu.inline_keyboard[0][0].callback_data == "adv:image:10:20"
+    assert "صورة ستوري" in menu.inline_keyboard[0][0].text
 
 
 def test_outsider_cannot_read_progress_or_generate_story():
