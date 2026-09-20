@@ -88,11 +88,21 @@ class StickerService:
         text: str,
     ) -> None:
         connection_id = await self._active_connection(connection_id)
-        await self.bot.send_message(
-            chat_id=chat_id,
-            business_connection_id=connection_id,
-            text=text,
-        )
+        try:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                business_connection_id=connection_id,
+                text=text,
+            )
+        except TelegramBadRequest as error:
+            if not is_business_transport_error(error):
+                raise
+            logger.warning(
+                "STREAK_NOTICE_DELIVERY_SKIPPED connection=%s chat=%s error=%s",
+                connection_id,
+                chat_id,
+                error,
+            )
 
     async def send_broken_notice(
         self,
@@ -164,7 +174,13 @@ class StickerService:
             return
         except TelegramBadRequest as error:
             if is_business_transport_error(error):
-                raise
+                logger.warning(
+                    "STREAK_STATUS_DELIVERY_SKIPPED connection=%s chat=%s error=%s",
+                    connection_id,
+                    chat_id,
+                    error,
+                )
+                return
             if self.message_effect_id:
                 logger.warning(
                     "STREAK_RICH_EFFECT_REJECTED error=%s",
@@ -175,7 +191,13 @@ class StickerService:
                     return
                 except TelegramBadRequest as rich_error:
                     if is_business_transport_error(rich_error):
-                        raise
+                        logger.warning(
+                            "STREAK_STATUS_DELIVERY_SKIPPED connection=%s chat=%s error=%s",
+                            connection_id,
+                            chat_id,
+                            rich_error,
+                        )
+                        return
                     logger.warning(
                         "STREAK_RICH_REJECTED error=%s",
                         rich_error,
@@ -186,22 +208,32 @@ class StickerService:
                     error,
                 )
 
-        await self.bot.send_message(
-            chat_id=chat_id,
-            business_connection_id=connection_id,
-            text=build_streak_fallback_text(
-                current=current,
-                longest=longest,
-                completed_days=completed_days,
-                break_count=break_count,
-                freeze_count=freeze_count,
-                last_completed_day=last_completed_day,
-                streak_mode=streak_mode,
-                timezone_name=timezone_name,
-                adventure_profile=adventure_profile,
-            ),
-            reply_markup=navigation(owner_user_id, chat_id),
-        )
+        try:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                business_connection_id=connection_id,
+                text=build_streak_fallback_text(
+                    current=current,
+                    longest=longest,
+                    completed_days=completed_days,
+                    break_count=break_count,
+                    freeze_count=freeze_count,
+                    last_completed_day=last_completed_day,
+                    streak_mode=streak_mode,
+                    timezone_name=timezone_name,
+                    adventure_profile=adventure_profile,
+                ),
+                reply_markup=navigation(owner_user_id, chat_id),
+            )
+        except TelegramBadRequest as error:
+            if not is_business_transport_error(error):
+                raise
+            logger.warning(
+                "STREAK_STATUS_DELIVERY_SKIPPED connection=%s chat=%s error=%s",
+                connection_id,
+                chat_id,
+                error,
+            )
 
     async def _send_sticker_once(
         self,
