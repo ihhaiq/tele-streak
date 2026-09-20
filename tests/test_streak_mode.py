@@ -5,7 +5,7 @@ import pytest
 
 from app.database.engine import Database
 from app.database.repository import Repository
-from app.handlers.guest_callbacks import _mode_menu
+from app.handlers.streak_mode import build_mode_menu
 from app.services.message_filter import matches_streak_mode
 from app.services.rich_status import build_streak_rich_message
 from app.streak_modes import (
@@ -15,18 +15,18 @@ from app.streak_modes import (
 )
 
 
-def fake_message(*, photo=None, video=None, voice=None):
-    return SimpleNamespace(photo=photo, video=video, voice=voice)
+def fake_message(*, text=None, photo=None, video=None, voice=None):
+    return SimpleNamespace(text=text, photo=photo, video=video, voice=voice)
 
 
 def test_mode_filter_accepts_only_selected_content():
     photo = fake_message(photo=[object()])
     video = fake_message(video=object())
     voice = fake_message(voice=object())
-    text = fake_message()
+    text = fake_message(text="هلا")
 
-    assert matches_streak_mode(photo, MODE_MESSAGE)
     assert matches_streak_mode(text, MODE_MESSAGE)
+    assert not matches_streak_mode(photo, MODE_MESSAGE)
 
     assert matches_streak_mode(photo, MODE_PHOTO_VIDEO)
     assert matches_streak_mode(video, MODE_PHOTO_VIDEO)
@@ -60,7 +60,7 @@ def test_status_places_mode_button_in_details_footer():
 
 
 def test_mode_menu_marks_current_mode_and_has_all_choices():
-    rich = _mode_menu(555, MODE_VOICE)
+    rich = build_mode_menu(555, MODE_VOICE)
 
     assert rich.html is not None
     assert "✓ بصمة صوتية" in rich.html
