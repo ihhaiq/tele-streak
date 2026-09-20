@@ -61,6 +61,18 @@ class GuestDeliveryService:
         reply_to_message_id: int | None = None,
         ttl_seconds: int = 60,
     ) -> GuestDeliveryResult:
+        resolved_connection = await self.repository.resolve_active_connection_id(
+            connection_id
+        )
+        if resolved_connection and resolved_connection != connection_id:
+            logger.info(
+                "STREAK_GUEST_CONNECTION_REBOUND old=%s new=%s chat=%s",
+                connection_id,
+                resolved_connection,
+                chat_id,
+            )
+            connection_id = resolved_connection
+
         username, supported = await self._identity()
         if not supported or not username:
             logger.warning(
