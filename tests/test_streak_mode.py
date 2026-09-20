@@ -126,10 +126,16 @@ def test_media_mode_ignores_text_and_waits_for_media(tmp_path):
         assert not ignored.completed
         record = await repository.get_streak("bc-media", 20)
         assert record is not None
+        assert record.owner_sent_day is None
         assert record.peer_sent_day is None
 
+        owner_photo = await service.register_message(
+            _message("bc-media", 20, 10, 3, photo=[object()])
+        )
+        assert not owner_photo.completed
+
         completed = await service.register_message(
-            _message("bc-media", 20, 30, 3, photo=[object()])
+            _message("bc-media", 20, 30, 4, photo=[object()])
         )
         assert completed.completed
         assert completed.days == 1
