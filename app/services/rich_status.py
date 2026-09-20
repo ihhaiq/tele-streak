@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram.types import InputRichMessage
 
+from app.services.message_filter import STREAK_MODE_LABELS
+
 DEFAULT_TIMEZONE = "Asia/Baghdad"
 
 
@@ -48,6 +50,8 @@ def build_streak_rich_message(
     break_count: int,
     freeze_count: int,
     last_completed_day: str | None,
+    chat_id: int,
+    streak_mode: str = "message",
     timezone_name: str | None = DEFAULT_TIMEZONE,
 ) -> InputRichMessage:
     last_day = last_completed_day or "لا يوجد"
@@ -58,6 +62,7 @@ def build_streak_rich_message(
     )
     remaining = remaining_day_text(timezone_name)
     midnight_unix = end_of_day_unix(timezone_name)
+    mode_label = STREAK_MODE_LABELS.get(streak_mode, STREAK_MODE_LABELS["message"])
     return InputRichMessage(
         html=(
             "<h1>🔥 حالة الستريك</h1>"
@@ -68,8 +73,15 @@ def build_streak_rich_message(
             f"إجمالي أيام الستريك: <b>{completed_days}</b><br>"
             f"{breaks}"
             f"الحماية المتاحة: <b>{protection_text(freeze_count)}</b><br>"
-            f"آخر يوم ناجح: <b>{last_day}</b>"
-            "</p></details>"
+            f"آخر يوم ناجح: <b>{last_day}</b><br>"
+            f"وضع الستريك: <b>{mode_label}</b>"
+            "</p>"
+            "<footer>"
+            f"<tg-button type=\"callback_data\" style=\"link\" data=\"streak_mode:open:{chat_id}\">"
+            "وضع الستريك"
+            "</tg-button>"
+            "</footer>"
+            "</details>"
             "<p>"
             "<tg-button type=\"disabled\">⏳ "
             f"<tg-time unix=\"{midnight_unix}\" format=\"r\">{remaining}</tg-time>"
@@ -88,6 +100,7 @@ def build_streak_fallback_text(
     break_count: int,
     freeze_count: int,
     last_completed_day: str | None,
+    streak_mode: str = "message",
     timezone_name: str | None = DEFAULT_TIMEZONE,
 ) -> str:
     lines = [
@@ -103,6 +116,7 @@ def build_streak_fallback_text(
         [
             f"الحماية المتاحة: {protection_text(freeze_count)}",
             f"آخر يوم ناجح: {last_completed_day or 'لا يوجد'}",
+            f"وضع الستريك: {STREAK_MODE_LABELS.get(streak_mode, STREAK_MODE_LABELS['message'])}",
             f"⏳ المتبقي لنهاية اليوم: {remaining_day_text(timezone_name)}",
         ]
     )
