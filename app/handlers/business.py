@@ -293,7 +293,7 @@ def build_router(
         if not should_count(message) or not connection_id or message.from_user is None:
             return
 
-        owner_id = await streaks.get_owner_id(message)
+        owner_id = await streaks.get_owner_id(message, connection_id)
         if owner_id is None:
             return
 
