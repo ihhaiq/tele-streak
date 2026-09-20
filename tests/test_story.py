@@ -45,7 +45,7 @@ def test_built_in_music_is_audible_and_exact_duration(tmp_path):
     not features.check_feature("raqm"),
     reason="Arabic shaping is required for the still story",
 )
-def test_static_story_is_shareable_portrait_png(tmp_path):
+def test_static_story_matches_business_story_photo_requirements(tmp_path):
     avatar = tmp_path / "profile.jpg"
     Image.new("RGB", (300, 240), "#41bca9").save(avatar)
     output = StoryRenderer().render_image(
@@ -55,10 +55,10 @@ def test_static_story_is_shareable_portrait_png(tmp_path):
         photos=(avatar, None),
     )
     with Image.open(output) as image:
-        assert image.format == "PNG"
-        assert image.size == (720, 1280)
+        assert image.format == "JPEG"
+        assert image.size == (1080, 1920)
         assert image.getbbox() is not None
-    assert output.stat().st_size < 5_000_000
+    assert output.stat().st_size < 10_000_000
 
 
 @pytest.mark.skipif(
@@ -68,7 +68,7 @@ def test_static_story_is_shareable_portrait_png(tmp_path):
     reason="FFmpeg and Arabic shaping are required for video integration",
 )
 @pytest.mark.parametrize("duration", [5, 10])
-def test_real_story_has_motion_arabic_h264_aac_and_portrait_dimensions(
+def test_real_story_has_motion_arabic_h265_aac_and_portrait_dimensions(
     tmp_path, duration
 ):
     avatar = tmp_path / "profile.jpg"
@@ -96,7 +96,27 @@ def test_real_story_has_motion_arabic_h264_aac_and_portrait_dimensions(
     )
     video = next(s for s in meta["streams"] if s["codec_type"] == "video")
     audio = next(s for s in meta["streams"] if s["codec_type"] == "audio")
-    assert (video["codec_name"], video["width"], video["height"]) == ("h264", 720, 1280)
+    assert (video["codec_name"], video["width"], video["height"]) == ("hevc", 720, 1280)
+    frame_rate = eval(video["r_frame_rate"], {"__builtins__": {}}, {})
+    keyframes = subprocess.check_output(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v",
+            "-skip_frame",
+            "nokey",
+            "-show_entries",
+            "frame=pts_time",
+            "-of",
+            "csv=p=0",
+            str(output),
+        ],
+        text=True,
+    ).strip().splitlines()
+    assert frame_rate == 24
+    assert len(keyframes) >= duration
     assert audio["codec_name"] == "aac"
     assert abs(float(meta["format"]["duration"]) - duration) < 0.15
     with (
@@ -104,7 +124,7 @@ def test_real_story_has_motion_arabic_h264_aac_and_portrait_dimensions(
         Image.open(tmp_path / "frames/0012.jpg") as second,
     ):
         assert ImageChops.difference(first, second).getbbox() is not None
-    assert output.stat().st_size < 10_000_000
+    assert output.stat().st_size < 30_000_000
 
 
 def test_story_rejects_bad_duration_and_missing_song(tmp_path):
