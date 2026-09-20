@@ -123,3 +123,47 @@ def test_repository_rejects_unknown_streak_mode(tmp_path):
         await database.close()
 
     asyncio.run(scenario())
+
+
+def test_mode_change_is_scoped_to_one_business_connection(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "streak.db")
+        await database.init()
+        repository = Repository(database)
+        await repository.upsert_connection("bc-1", 10, None, True)
+        await repository.upsert_connection("bc-2", 10, None, True)
+
+        await repository.register_activity(
+            connection_id="bc-1",
+            chat_id=20,
+            message_id=1,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-20",
+            yesterday="2026-09-19",
+            choose_pose=lambda days, last: "pose",
+        )
+        await repository.register_activity(
+            connection_id="bc-2",
+            chat_id=20,
+            message_id=2,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-20",
+            yesterday="2026-09-19",
+            choose_pose=lambda days, last: "pose",
+        )
+
+        changed = await repository.set_streak_mode(
+            10, "bc-1", 20, MODE_VOICE, "2026-09-20"
+        )
+        assert changed is not None
+        assert changed.business_connection_id == "bc-1"
+        assert changed.streak_mode == MODE_VOICE
+
+        other = await repository.get_streak("bc-2", 20)
+        assert other is not None
+        assert other.streak_mode == MODE_MESSAGE
+        await database.close()
+
+    asyncio.run(scenario())
