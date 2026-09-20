@@ -167,8 +167,9 @@ notification mute, and automatic-Freeze controls.
 
 ## Shared adventures and story sharing
 
-Each pair now has shared XP/level, daily missions, a friendly comparison,
-Combo bonuses, occasional events, unlockable achievements, and a number-free
+Each pair now has shared XP/level, a 300+ task catalog with six random tasks
+every six hours, a friendly comparison, Combo bonuses, occasional events,
+unlockable achievements, and a number-free
 Jake celebration on the first completed day of a new streak. Open `ستريك`
 for the new buttons. Existing streak content modes still decide daily completion.
 
