@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -237,3 +239,42 @@ def test_youtube_base_options_skip_cookies_for_android_vr(tmp_path):
     modes = {mode.name: mode for mode in music._modes()}
     assert "cookiefile" in music._base_options(modes["mweb-pot"])
     assert "cookiefile" not in music._base_options(modes["android-vr"])
+
+
+def test_youtube_cookies_b64_materialized_securely(tmp_path):
+    cookies = "# Netscape HTTP Cookie File\n"
+    encoded = base64.b64encode(cookies.encode()).decode()
+    provider = tmp_path / "provider"
+    provider.mkdir()
+    music = YouTubeStoryMusic(
+        cookies_b64=encoded,
+        pot_provider_home=provider,
+    )
+    cookie_path = music.cookie_file
+    assert cookie_path is not None and cookie_path.is_file()
+    assert cookie_path.read_text() == cookies
+    assert stat.S_IMODE(cookie_path.stat().st_mode) == 0o600
+    modes = {mode.name: mode for mode in music._modes()}
+    assert music._base_options(modes["mweb-pot"])["cookiefile"] == str(cookie_path)
+    assert "cookiefile" not in music._base_options(modes["android-vr"])
+    music.close()
+    assert not cookie_path.exists()
+
+
+def test_youtube_cookies_b64_rejects_non_netscape_data():
+    encoded = base64.b64encode(b"plain text").decode()
+    try:
+        YouTubeStoryMusic(cookies_b64=encoded)
+    except RuntimeError as error:
+        assert "Netscape" in str(error)
+    else:
+        raise AssertionError("invalid cookie data must be rejected")
+
+
+def test_youtube_cookies_b64_rejects_invalid_base64():
+    try:
+        YouTubeStoryMusic(cookies_b64="not-base64")
+    except RuntimeError as error:
+        assert "Base64" in str(error)
+    else:
+        raise AssertionError("invalid Base64 must be rejected")
