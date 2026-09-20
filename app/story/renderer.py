@@ -198,8 +198,8 @@ def story_card(
 
     # خطوط الحركة تخلي الكرتين يبينن كأن Jake دا يلعب بيهن.
     motion = ImageDraw.Draw(canvas)
-    motion.arc((95, 382, 625, 720), start=202, end=338, fill="#ffffff88", width=5)
-    motion.arc((127, 414, 593, 690), start=205, end=335, fill="#ffd56b88", width=3)
+    motion.arc((95, 382, 625, 720), start=202, end=338, fill=(255, 255, 255, 136), width=5)
+    motion.arc((127, 414, 593, 690), start=205, end=335, fill=(255, 213, 107, 136), width=3)
 
     footer = ImageDraw.Draw(canvas)
     footer.rounded_rectangle((92, 1080, 628, 1165), radius=34, fill="#142342")
@@ -211,7 +211,6 @@ def story_card(
 class StoryRenderer:
     def __init__(self, music_path: Path | None = None):
         self.music_path = music_path
-
 
     def render_image(
         self,
