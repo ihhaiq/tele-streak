@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
 from app.adventures.rules import Activity, Profile, apply_activity, make_day
+from app.adventures.tasks import ensure_task_slot
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS adventure_profiles (
@@ -149,6 +150,8 @@ async def record_activity(
     state = await load_day(db, key, day)
     if state is None:
         state = make_day(day, profile, activity.at.hour)
+    else:
+        ensure_task_slot(state, activity.at)
     celebrate = completed and restarted and not state["completed"]
     before_all = state["all_bonus"]
     notes, shield = apply_activity(
@@ -221,6 +224,8 @@ class AdventureRepository:
             state = await load_day(db, key, today)
             if state is None:
                 state = make_day(today, profile, now.hour)
+                await save_day(db, key, today, state)
+            elif ensure_task_slot(state, now):
                 await save_day(db, key, today, state)
             await save_profile(db, key, profile)
             await db.commit()

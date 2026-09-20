@@ -4,7 +4,8 @@ from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputRichMessage
 
-from .rules import BADGES, EVENTS, TASKS, Profile, level_progress
+from .rules import BADGES, EVENTS, Profile, level_progress
+from .tasks import ALL_TASKS_BONUS_XP, active_task_specs
 
 
 _NAV_ITEMS = (
@@ -56,6 +57,17 @@ def _rich_button(label: str, data: str, *, disabled: bool = False) -> str:
     )
 
 
+def _compact_button_table(buttons: list[str]) -> str:
+    rows: list[str] = []
+    for index in range(0, len(buttons), 2):
+        pair = buttons[index:index + 2]
+        cells = "".join(f'<td align="center">{button}</td>' for button in pair)
+        if len(pair) == 1:
+            cells = f'<td colspan="2" align="center">{pair[0]}</td>'
+        rows.append(f"<tr>{cells}</tr>")
+    return "<table compact>" + "".join(rows) + "</table>"
+
+
 def rich_buttons(
     owner: int,
     chat: int,
@@ -64,41 +76,35 @@ def rich_buttons(
     include_status: bool = False,
     include_mode: bool = False,
 ) -> str:
-    items: list[str] = []
+    buttons: list[str] = []
 
     if include_mode:
-        items.append(
-            "<li>"
-            + _rich_button(
+        buttons.append(
+            _rich_button(
                 "وضع الستريك",
                 f"streak_mode:open:{owner}:{chat}",
             )
-            + "</li>"
         )
 
     for action, label in _NAV_ITEMS:
-        items.append(
-            "<li>"
-            + _rich_button(
+        buttons.append(
+            _rich_button(
                 label,
                 f"adv:{action}:{owner}:{chat}",
                 disabled=action == current_page,
             )
-            + "</li>"
         )
 
     if include_status:
-        items.append(
-            "<li>"
-            + _rich_button(
+        buttons.append(
+            _rich_button(
                 "الحالة",
                 f"adv:status:{owner}:{chat}",
                 disabled=current_page == "status",
             )
-            + "</li>"
         )
 
-    return "<ul>" + "".join(items) + "</ul>"
+    return _compact_button_table(buttons)
 
 
 def _compare_comment(ratio: int) -> str:
@@ -118,22 +124,14 @@ def page_text(profile: Profile, state: dict, page: str) -> str:
             [
                 "مقارنة ودية",
                 "",
-                first_name,
-                f"• بدأ: {first['started']}",
-                f"• تأخر: {first['late']}",
-                f"• أيام: {first['days']}",
-                f"• إحياء: {first['saves']}",
-                f"• مساهمة: {ratio}٪",
-                "",
-                second_name,
-                f"• بدأ: {second['started']}",
-                f"• تأخر: {second['late']}",
-                f"• أيام: {second['days']}",
-                f"• إحياء: {second['saves']}",
-                f"• مساهمة: {100 - ratio}٪",
+                f"{first_name} | {second_name}",
+                f"بدأ: {first['started']} | {second['started']}",
+                f"تأخر: {first['late']} | {second['late']}",
+                f"أيام: {first['days']} | {second['days']}",
+                f"إحياء: {first['saves']} | {second['saves']}",
+                f"مساهمة: {ratio}٪ | {100 - ratio}٪",
                 "",
                 _compare_comment(ratio),
-                f"حماية مشتركة: {profile.automatic_saves}",
             ]
         )
 
@@ -145,15 +143,16 @@ def page_text(profile: Profile, state: dict, page: str) -> str:
             lines.append("لا يوجد إنجاز ظاهر بعد.")
         return "\n".join(lines)
 
-    lines = ["مهام اليوم", progress_text(profile), ""]
-    if state["event"]:
+    lines = ["المهام", progress_text(profile), ""]
+    if state.get("event"):
         lines.extend([EVENTS[state["event"]], ""])
-    for key in state["tasks"]:
-        mark = "✓" if key in state["done"] else "○"
-        multiplier = 2 if state["event"] == "double" else 1
-        lines.append(f"{mark} {TASKS[key][0]} · {TASKS[key][1] * multiplier} XP")
-    bonus = 40 if state["event"] == "double" else 20
-    lines.extend(["", f"إكمال الكل: +{bonus} XP", "التجدد: 12:00 ص"])
+    done = set(state.get("done", ()))
+    for spec in active_task_specs(state):
+        mark = "✓" if spec.key in done else "○"
+        multiplier = 2 if state.get("event") == "double" else 1
+        lines.append(f"{mark} {spec.label} · {spec.xp * multiplier} XP")
+    bonus = ALL_TASKS_BONUS_XP * (2 if state.get("event") == "double" else 1)
+    lines.extend(["", f"إكمال الـ6: +{bonus} XP", "تتجدد كل 6 ساعات"])
     return "\n".join(lines)
 
 
@@ -164,35 +163,32 @@ def _rich_compare(profile: Profile, owner: int, chat: int) -> InputRichMessage:
     first_name = escape(first["name"] or "الطرف الأول")
     second_name = escape(second["name"] or "الطرف الثاني")
 
-    def person(name: str, stats: dict, share: int) -> str:
-        return (
-            f"<h3>{name}</h3>"
-            "<ul>"
-            f"<li>بدأ: <b>{stats['started']}</b></li>"
-            f"<li>تأخر: <b>{stats['late']}</b></li>"
-            f"<li>أيام: <b>{stats['days']}</b></li>"
-            f"<li>إحياء: <b>{stats['saves']}</b></li>"
-            f"<li>مساهمة: <b>{share}٪</b></li>"
-            "</ul>"
-        )
+    table = (
+        "<table compact>"
+        "<tr><th>الطرف الأول</th><th>الطرف الثاني</th></tr>"
+        f"<tr><td><b>{first_name}</b></td><td><b>{second_name}</b></td></tr>"
+        f"<tr><td>بدأ: <b>{first['started']}</b></td><td>بدأ: <b>{second['started']}</b></td></tr>"
+        f"<tr><td>تأخر: <b>{first['late']}</b></td><td>تأخر: <b>{second['late']}</b></td></tr>"
+        f"<tr><td>أيام: <b>{first['days']}</b></td><td>أيام: <b>{second['days']}</b></td></tr>"
+        f"<tr><td>إحياء: <b>{first['saves']}</b></td><td>إحياء: <b>{second['saves']}</b></td></tr>"
+        f"<tr><td>مساهمة: <b>{ratio}٪</b></td><td>مساهمة: <b>{100 - ratio}٪</b></td></tr>"
+        "</table>"
+    )
 
     return InputRichMessage(
         html=(
             "<h1>مقارنة ودية</h1>"
-            + person(first_name, first, ratio)
-            + "<hr/>"
-            + person(second_name, second, 100 - ratio)
+            "<hr/>"
+            + table
             + "<p>"
             f"<b>{escape(_compare_comment(ratio))}</b><br>"
             f"حماية مشتركة: <b>{profile.automatic_saves}</b>"
             "</p>"
             "<details><summary>الحساب</summary>"
-            "<ul>"
-            f"<li>منذ: <b>{escape(str(profile.tracked_since))}</b></li>"
-            "<li>متأخر = أول مشاركة بعد 10م.</li>"
-            "<li>الإحياء للطرفين.</li>"
-            "<li>النسبة = الأيام + المهام.</li>"
-            "</ul>"
+            "<p>بدأ = من بدأ اليوم أكثر.<br>"
+            "تأخر = أول مشاركة بعد 10 بالليل.<br>"
+            "الإحياء محسوب للطرفين.<br>"
+            "المساهمة من الأيام والمهام، مو عدد الرسائل وحده.</p>"
             "</details>"
             "<details><summary>الخيارات</summary>"
             + rich_buttons(
@@ -209,35 +205,43 @@ def _rich_compare(profile: Profile, owner: int, chat: int) -> InputRichMessage:
 
 def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRichMessage:
     level, current, needed = level_progress(profile.shared_xp)
+    done = set(state.get("done", ()))
+    multiplier = 2 if state.get("event") == "double" else 1
     rows: list[str] = []
 
-    for key in state["tasks"]:
-        mark = "✓" if key in state["done"] else "○"
-        multiplier = 2 if state["event"] == "double" else 1
+    for spec in active_task_specs(state):
+        mark = "✓" if spec.key in done else "○"
         rows.append(
-            f"<li>{mark} {escape(TASKS[key][0])} · "
-            f"<b>{TASKS[key][1] * multiplier} XP</b></li>"
+            "<tr>"
+            f"<td align=\"center\">{mark}</td>"
+            f"<td>{escape(spec.label)}</td>"
+            f"<td align=\"center\"><b>{spec.xp * multiplier}</b></td>"
+            "</tr>"
         )
 
     event = (
         f"<p><b>{escape(EVENTS[state['event']])}</b></p>"
-        if state["event"]
+        if state.get("event")
         else ""
     )
-    bonus = 40 if state["event"] == "double" else 20
+    bonus = ALL_TASKS_BONUS_XP * multiplier
 
     return InputRichMessage(
         html=(
-            "<h1>مهام اليوم</h1>"
+            "<h1>المهام</h1>"
             f"<p><b>المستوى {level}</b> · Combo ×{profile.combo}<br>"
             f"{current}/{needed} XP · الإجمالي <b>{profile.shared_xp}</b></p>"
             + event
-            + "<ul>"
+            + "<table compact>"
+            "<tr><th></th><th>المهمة</th><th>XP</th></tr>"
             + "".join(rows)
-            + "</ul>"
-            f"<footer>إكمال الكل: +{bonus} XP · تتجدد 12:00 ص</footer>"
-            "<details><summary>الـCombo</summary>"
-            "<p>قبل 10م يرفعه · التأخير أو يوم فائت يقطعه.</p>"
+            + "</table>"
+            f"<footer>إكمال الـ6: +{bonus} XP · تتجدد كل 6 ساعات</footer>"
+            "<details><summary>شنو الـCombo؟</summary>"
+            "<p>الـCombo يعني شكد يوم ورا بعض تكملون الستريك قبل الساعة 10 بالليل. "
+            "خلصتوه قبل 10؟ يزيد ×1. ثاني يوم هم قبل 10؟ يصير ×2، وهكذا؛ "
+            "وكل ما يرتفع يعطيكم XP أكثر. إذا خلصتوه بعد 10، فات يوم، "
+            "أو استخدمتوا حماية/إحياء، ينقطع ويرجع ×0 وتبدون من جديد.</p>"
             "</details>"
             "<details><summary>الخيارات</summary>"
             + rich_buttons(
@@ -283,18 +287,12 @@ def _rich_badges(profile: Profile, owner: int, chat: int) -> InputRichMessage:
 
 
 def rich_story_page(owner: int, chat: int) -> InputRichMessage:
-    story_actions = (
-        "<ul>"
-        "<li>"
-        + _rich_button("صورة", f"adv:image:{owner}:{chat}")
-        + "</li>"
-        "<li>"
-        + _rich_button("فيديو · 5 ثواني", f"adv:video5:{owner}:{chat}")
-        + "</li>"
-        "<li>"
-        + _rich_button("فيديو · 10 ثواني", f"adv:video10:{owner}:{chat}")
-        + "</li>"
-        "</ul>"
+    story_actions = _compact_button_table(
+        [
+            _rich_button("صورة", f"adv:image:{owner}:{chat}"),
+            _rich_button("فيديو · 5 ثواني", f"adv:video5:{owner}:{chat}"),
+            _rich_button("فيديو · 10 ثواني", f"adv:video10:{owner}:{chat}"),
+        ]
     )
 
     return InputRichMessage(

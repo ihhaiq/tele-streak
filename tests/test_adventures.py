@@ -12,6 +12,12 @@ from app.adventures.rules import (
     level_progress,
     make_day,
 )
+from app.adventures.tasks import (
+    TASK_CATALOG,
+    active_task_specs,
+    choose_tasks,
+    task_slot,
+)
 from app.adventures.views import navigation, page_text, rich_page
 from app.database import adventure_repository as module
 from app.database.activation_repository import StreakActivationRepository
@@ -26,7 +32,7 @@ def at(day=20, hour=12, minute=0, second=0):
     return datetime(2026, 9, day, hour, minute, second, tzinfo=ZoneInfo("Asia/Baghdad"))
 
 
-def state(tasks=("photo", "words"), event=""):
+def state(tasks=("owner_texts_1", "peer_photo_1"), event=""):
     result = make_day("2026-09-20", Profile(), 12, random.Random(3))
     result.update(tasks=list(tasks), event=event, secret_roll=False)
     return result
@@ -98,7 +104,7 @@ def test_duplicate_concurrent_updates_restart_and_reconnect(tmp_path, monkeypatc
             assert sum(r.celebrate for r in results) == 1
             assert sum(r.duplicate for r in results) == 7
             profile, daily = await data.snapshot("bc", 20, at())
-            assert profile.shared_xp == 70  # 10 + 15 + all 20 + day 20 + combo 5
+            assert profile.shared_xp == 73  # 11 + 17 + all 20 + day 20 + combo 5
             assert profile.stats["owner"]["days"] == profile.stats["peer"]["days"] == 1
             assert profile.stats["owner"]["started"] == 1
             assert len(daily["done"]) == 2
@@ -134,7 +140,8 @@ def test_media_mission_does_not_complete_text_streak(tmp_path, monkeypatch):
                 record.owner_sent_day == "2026-09-20" and record.peer_sent_day is None
             )
             profile, daily = await data.snapshot("bc", 20, at())
-            assert set(daily["done"]) == {"photo", "words"} and profile.shared_xp == 45
+            assert set(daily["done"]) == {"owner_texts_1", "peer_photo_1"}
+            assert profile.shared_xp == 48
             assert profile.stats["peer"]["days"] == 0
             assert (await send(repo, 3, "peer", at(minute=3))).completed
         finally:
@@ -166,7 +173,7 @@ def test_atomic_rollback_and_retry(tmp_path, monkeypatch):
 
 
 def test_combo_breaks_with_delay_gap_freeze_revive_reset(tmp_path, monkeypatch):
-    monkeypatch.setattr(module, "make_day", lambda *_: state(("photo", "video")))
+    monkeypatch.setattr(module, "make_day", lambda *_: state(("owner_photo_1", "peer_video_1")))
 
     async def run():
         db, repo, data = await setup(tmp_path / "test.db")
@@ -221,7 +228,7 @@ def test_combo_breaks_with_delay_gap_freeze_revive_reset(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("event", ["double", "shield", "combo", "rare", "fast", "calm"])
 def test_events_reward_once_and_protection_is_capped(tmp_path, monkeypatch, event):
-    monkeypatch.setattr(module, "make_day", lambda *_: state(("photo", "words"), event))
+    monkeypatch.setattr(module, "make_day", lambda *_: state(("owner_texts_1", "peer_photo_1"), event))
 
     async def run():
         db, repo, data = await setup(tmp_path / "test.db")
@@ -234,9 +241,9 @@ def test_events_reward_once_and_protection_is_capped(tmp_path, monkeypatch, even
             assert after.shared_xp == before.shared_xp
             assert (await repo.get_streak("bc", 20)).freeze_count == 3
             if event == "double":
-                assert before.shared_xp == 140
+                assert before.shared_xp == 146
             if event == "shield":
-                assert before.shared_xp == 90
+                assert before.shared_xp == 93
         finally:
             await db.close()
 
@@ -369,7 +376,9 @@ def test_random_event_frequency_cooldown_and_tasks_bounds():
         now = at() + timedelta(days=day)
         previous = profile.last_event_day
         daily = make_day(now.date().isoformat(), profile, 23, rng)
-        assert 1 <= len(daily["tasks"]) <= 3 and "early" not in daily["tasks"]
+        assert len(daily["tasks"]) == 6
+        specs = active_task_specs(daily)
+        assert len({spec.xp for spec in specs}) == 6
         if daily["event"]:
             events += 1
             if previous:
@@ -402,21 +411,21 @@ def test_manual_streak_increment_does_not_grant_xp(tmp_path):
     asyncio.run(run())
 
 
-def test_rare_task_requires_both_photos_and_secret_unlock_is_once():
+def test_rare_event_secret_unlock_is_once():
     from app.adventures.rules import apply_activity
 
     profile = Profile()
-    daily = state(("words", "photo", "rare"), "rare")
+    daily = state(("owner_photo_1", "peer_photo_1"), "rare")
     daily["secret_roll"] = True
     apply_activity(
         profile,
         daily,
-        Activity(at(), "owner", "photo", 3),
+        Activity(at(), "owner", "photo", 0),
         completed=False,
         restarted=False,
         freeze_count=3,
     )
-    assert "rare" not in daily["done"] and "secret_lucky" not in profile.badges
+    assert "secret_lucky" not in profile.badges
     apply_activity(
         profile,
         daily,
@@ -425,7 +434,7 @@ def test_rare_task_requires_both_photos_and_secret_unlock_is_once():
         restarted=True,
         freeze_count=3,
     )
-    assert "rare" in daily["done"] and "secret_lucky" in profile.badges
+    assert "secret_lucky" in profile.badges
     xp = profile.shared_xp
     apply_activity(
         profile,
@@ -436,3 +445,83 @@ def test_rare_task_requires_both_photos_and_secret_unlock_is_once():
         freeze_count=3,
     )
     assert profile.shared_xp == xp
+
+
+def test_task_catalog_has_more_than_300_real_tasks():
+    assert len(TASK_CATALOG) > 300
+    assert len(TASK_CATALOG) == len(set(TASK_CATALOG))
+    assert all(spec.label and spec.xp > 0 for spec in TASK_CATALOG.values())
+
+
+def test_each_six_hour_batch_has_six_unique_xp_values():
+    for seed in range(50):
+        selected = choose_tasks(random.Random(seed))
+        specs = [TASK_CATALOG[key] for key in selected]
+        assert len(selected) == 6
+        assert len(set(selected)) == 6
+        assert len({spec.xp for spec in specs}) == 6
+
+
+def test_task_slot_changes_exactly_every_six_hours():
+    assert task_slot(at(hour=0)) == task_slot(at(hour=5, minute=59))
+    assert task_slot(at(hour=6)) != task_slot(at(hour=5, minute=59))
+    assert task_slot(at(hour=6)) == task_slot(at(hour=11, minute=59))
+    assert task_slot(at(hour=12)) != task_slot(at(hour=11, minute=59))
+    assert task_slot(at(hour=18)) != task_slot(at(hour=17, minute=59))
+
+
+def test_snapshot_rotates_tasks_once_per_six_hour_slot(tmp_path):
+    async def run():
+        db, repo, data = await setup(tmp_path / "test.db")
+        try:
+            _, first = await data.snapshot("bc", 20, at(hour=12))
+            first_tasks = list(first["tasks"])
+            first_slot = first["task_slot"]
+
+            _, same = await data.snapshot("bc", 20, at(hour=17, minute=59))
+            assert same["task_slot"] == first_slot
+            assert same["tasks"] == first_tasks
+
+            _, rotated = await data.snapshot("bc", 20, at(hour=18))
+            assert rotated["task_slot"] != first_slot
+            assert len(rotated["tasks"]) == 6
+            assert set(rotated["tasks"]).isdisjoint(first_tasks)
+            assert rotated["done"] == []
+            assert rotated["all_bonus"] is False
+            specs = active_task_specs(rotated)
+            assert len({spec.xp for spec in specs}) == 6
+        finally:
+            await db.close()
+
+    asyncio.run(run())
+
+
+def test_legacy_task_state_rotates_into_new_catalog(tmp_path):
+    async def run():
+        db, repo, data = await setup(tmp_path / "test.db")
+        try:
+            async with db.connect() as conn:
+                await conn.execute(
+                    """INSERT INTO adventure_days(
+                        business_connection_id, chat_id, day, state
+                    ) VALUES (?, ?, ?, ?)""",
+                    (
+                        "bc",
+                        20,
+                        "2026-09-20",
+                        '{"tasks":["photo","words"],"done":[],"event":"","first":{},'
+                        '"completed":false,"all_bonus":false,"notice_count":0,'
+                        '"latest_notice":"","secret_roll":false}',
+                    ),
+                )
+                await conn.commit()
+
+            _, state = await data.snapshot("bc", 20, at(hour=12))
+            assert len(state["tasks"]) == 6
+            assert state["task_slot"] == task_slot(at(hour=12))
+            assert "photo" not in state["tasks"]
+            assert "words" not in state["tasks"]
+        finally:
+            await db.close()
+
+    asyncio.run(run())

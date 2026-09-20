@@ -5,26 +5,23 @@ import random
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
-TASKS = {
-    "photo": ("صورة من واحد منكم 📷", 15),
-    "video": ("فيديو من واحد منكم 🎬", 20),
-    "voice": ("بصمة من واحد منكم 🎙", 15),
-    "words": ("رسالة من ٣ كلمات أو أكثر 💬", 10),
-    "early": ("كملوا الستريك قبل ٦ العصر ☀️", 20),
-    "quick": ("مشاركة الطرفين خلال ١٠ دقائق ⚡", 20),
-    "peer_first": ("الطرف الثاني يبدي اليوم 😆", 15),
-    "rare": ("مهمة نادرة: كل واحد يرسل صورة 🎁", 40),
-}
+from .tasks import (
+    ALL_TASKS_BONUS_XP,
+    ensure_task_slot,
+    is_task_done,
+    record_task_activity,
+    task_spec,
+)
 EVENTS = {
     "double": "يوم XP مضاعف ✨",
     "shield": "هدية حماية عند إكمال اليوم 🧊",
     "combo": "مكافأة Combo إضافية 🔥",
-    "rare": "ظهرت مهمة نادرة 🎁",
+    "rare": "حدث نادر 🎁",
     "fast": "يوم سريع: كملوا خلال ١٠ دقائق ⚡",
     "calm": "يوم هدوء: كملوا قبل ١٠ بالليل 🌙",
 }
 BADGES = {
-    "together": ("أول مغامرة 🤝", "أكملتوا مهام يوم كامل."),
+    "together": ("أول مغامرة 🤝", "أكملتوا مجموعة مهام كاملة."),
     "rhythm": ("على نفس الموجة 🎵", "وصلتوا Combo x5."),
     "secret_sync": ("توأم اللحظة 💫", "أول مشاركتين بفارق ٣٠ ثانية أو أقل."),
     "secret_lucky": ("ضيف Jake السري 🍀", "لقيتوا الهدية السرية بيوم المهمة النادرة."),
@@ -71,9 +68,6 @@ class Profile:
 
 def make_day(day: str, profile: Profile, hour: int, rng=None) -> dict:
     rng = rng or random.SystemRandom()
-    pool = ["photo", "video", "voice", "words", "quick", "peer_first"]
-    if hour < 18:
-        pool.append("early")
     event = ""
     cooled = (
         not profile.last_event_day
@@ -91,22 +85,21 @@ def make_day(day: str, profile: Profile, hour: int, rng=None) -> dict:
             )
         )
         profile.last_event_day = day
-    tasks = rng.sample(pool, 2)
-    if event == "rare":
-        tasks.append("rare")
-    return dict(
-        tasks=tasks,
+
+    state = dict(
+        tasks=[],
         done=[],
         event=event,
         first={},
-        photo_roles=[],
         completed=False,
         all_bonus=False,
         notice_count=0,
         latest_notice="",
         secret_roll=rng.random() < 0.05,
     )
-
+    at = datetime.fromisoformat(f"{day}T{hour:02}:00:00")
+    ensure_task_slot(state, at, rng)
+    return state
 
 def apply_activity(
     profile: Profile,
@@ -118,6 +111,7 @@ def apply_activity(
     freeze_count: int,
 ) -> tuple[list[str], bool]:
     day = activity.at.date().isoformat()
+    ensure_task_slot(state, activity.at)
     role = activity.role
     stats = profile.stats[role]
     stats["name"] = activity.name[:80] or stats["name"]
@@ -128,7 +122,12 @@ def apply_activity(
     multiplier = 2 if state["event"] == "double" else 1
     gained = 0
 
-    def award(amount: int, label: str, shared: bool = False) -> None:
+    def award(
+        amount: int,
+        label: str,
+        shared: bool = False,
+        credit_role: str | None = None,
+    ) -> None:
         nonlocal gained
         amount *= multiplier
         gained += amount
@@ -136,7 +135,7 @@ def apply_activity(
             profile.stats["owner"]["contribution"] += amount / 2
             profile.stats["peer"]["contribution"] += amount / 2
         else:
-            stats["contribution"] += amount
+            profile.stats[credit_role or role]["contribution"] += amount
         notices.append(f"{label} +{amount} XP")
 
     if activity.qualifies and role not in state["first"]:
@@ -153,29 +152,37 @@ def apply_activity(
             stats["late"] += int(activity.at.hour >= 22)
     first = state["first"]
     gap = abs(first["owner"] - first["peer"]) if len(first) == 2 else None
-    if activity.kind == "photo" and role not in state["photo_roles"]:
-        state["photo_roles"].append(role)
-    conditions = {
-        "photo": activity.kind == "photo",
-        "video": activity.kind == "video",
-        "voice": activity.kind == "voice",
-        "words": activity.words >= 3,
-        "peer_first": bool(first) and min(first, key=first.get) == "peer",
-        "early": completed and activity.at.hour < 18,
-        "quick": completed and gap is not None and gap <= 600,
-        "rare": len(state["photo_roles"]) == 2,
+
+    record_task_activity(state, activity)
+    shared_rules = {
+        "total_messages",
+        "total_words",
+        "both_messages",
+        "both_words",
+        "both_kind",
+        "total_kind",
+        "pair_kind",
+        "total_variety",
+        "first_gap",
+        "split_messages",
     }
-    for task in state["tasks"]:
-        if task not in state["done"] and conditions[task]:
-            state["done"].append(task)
-            award(
-                TASKS[task][1],
-                f"تمت المهمة اليومية 🎯 {TASKS[task][0]}",
-                shared=task in {"early", "quick", "rare"},
-            )
+    for task_key in state["tasks"]:
+        if task_key in state["done"]:
+            continue
+        spec = task_spec(task_key)
+        if not is_task_done(spec, state):
+            continue
+        state["done"].append(task_key)
+        award(
+            spec.xp,
+            f"مهمة خلصت: {spec.label}",
+            shared=spec.rule in shared_rules,
+            credit_role=spec.role,
+        )
+
     if len(state["done"]) == len(state["tasks"]) and not state["all_bonus"]:
         state["all_bonus"] = True
-        award(20, "خلصتوا كل المهام! 🎉", shared=True)
+        award(ALL_TASKS_BONUS_XP, "خلصتوا الـ6 مهام", shared=True)
         if "together" not in profile.badges:
             profile.badges.append("together")
             notices.append("فتحتوا إنجاز: أول مغامرة 🤝")
