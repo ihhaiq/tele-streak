@@ -921,6 +921,7 @@ class Repository:
         owner_user_id: int,
         chat_id: int,
         mode: str,
+        today: str,
     ) -> StreakRecord | None:
         if mode not in STREAK_MODES:
             raise ValueError("unknown streak mode")
@@ -930,14 +931,23 @@ class Repository:
             cursor = await db.execute(
                 """
                 UPDATE streaks
-                SET streak_mode=?, updated_at=?
+                SET streak_mode=?,
+                    owner_sent_day=CASE
+                        WHEN last_completed_day=? THEN owner_sent_day
+                        ELSE NULL
+                    END,
+                    peer_sent_day=CASE
+                        WHEN last_completed_day=? THEN peer_sent_day
+                        ELSE NULL
+                    END,
+                    updated_at=?
                 WHERE chat_id=? AND business_connection_id IN (
                     SELECT business_connection_id
                     FROM business_connections
                     WHERE owner_user_id=? AND is_enabled=1
                 )
                 """,
-                (mode, self._now(), chat_id, owner_user_id),
+                (mode, today, today, self._now(), chat_id, owner_user_id),
             )
             if cursor.rowcount != 1:
                 await db.rollback()
