@@ -147,7 +147,6 @@ def build_router(repository: Repository) -> Router:
             await callback.answer()
             return
         if mode not in STREAK_MODE_LABELS:
-
             await callback.answer("وضع غير صالح.", show_alert=True)
             return
 
