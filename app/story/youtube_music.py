@@ -68,12 +68,17 @@ class YouTubeStoryMusic:
         self,
         *,
         cookie_file: Path | None = None,
+        cookies_raw: str | None = None,
         cookies_b64: str | None = None,
         pot_provider_home: Path | None = None,
         attempts: int = 3,
     ):
         self._temporary_cookie_file: Path | None = None
-        self.cookie_file = self._resolve_cookie_file(cookie_file, cookies_b64)
+        self.cookie_file = self._resolve_cookie_file(
+            cookie_file,
+            cookies_raw,
+            cookies_b64,
+        )
         self.pot_provider_home = (
             pot_provider_home
             if pot_provider_home and pot_provider_home.is_dir()
@@ -82,11 +87,49 @@ class YouTubeStoryMusic:
         self.attempts = max(1, min(int(attempts), 6))
         self._random = random.SystemRandom()
 
+    @staticmethod
+    def _normalize_cookie_text(text: str, source_name: str) -> str:
+        normalized = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+        first = normalized.split("\n", 1)[0].strip()
+        if first not in {
+            "# Netscape HTTP Cookie File",
+            "# HTTP Cookie File",
+        }:
+            raise RuntimeError(
+                f"{source_name} must contain Netscape cookies.txt content"
+            )
+        return normalized if normalized.endswith("\n") else normalized + "\n"
+
+    def _write_temporary_cookie_file(self, text: str, source: str) -> Path:
+        fd, raw_path = tempfile.mkstemp(
+            prefix="streak-youtube-cookies-",
+            suffix=".txt",
+        )
+        path = Path(raw_path)
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
+                output.write(text)
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
+        self._temporary_cookie_file = path
+        logger.info("STORY_YOUTUBE_COOKIES_READY source=%s", source)
+        return path
+
     def _resolve_cookie_file(
         self,
         cookie_file: Path | None,
+        cookies_raw: str | None,
         cookies_b64: str | None,
     ) -> Path | None:
+        if cookies_raw:
+            normalized = self._normalize_cookie_text(
+                cookies_raw,
+                "STORY_YOUTUBE_COOKIES",
+            )
+            return self._write_temporary_cookie_file(normalized, "railway_raw")
+
         if cookies_b64:
             compact = "".join(cookies_b64.split())
             try:
@@ -102,33 +145,11 @@ class YouTubeStoryMusic:
                     "STORY_YOUTUBE_COOKIES_B64 must contain a UTF-8 cookies.txt file"
                 ) from error
 
-            normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-            first = normalized.split("\n", 1)[0].strip()
-            if first not in {
-                "# Netscape HTTP Cookie File",
-                "# HTTP Cookie File",
-            }:
-                raise RuntimeError(
-                    "STORY_YOUTUBE_COOKIES_B64 must be a Netscape cookies.txt file"
-                )
-
-            fd, raw_path = tempfile.mkstemp(
-                prefix="streak-youtube-cookies-",
-                suffix=".txt",
+            normalized = self._normalize_cookie_text(
+                text,
+                "STORY_YOUTUBE_COOKIES_B64",
             )
-            path = Path(raw_path)
-            try:
-                os.fchmod(fd, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
-                    output.write(normalized)
-                    if not normalized.endswith("\n"):
-                        output.write("\n")
-            except Exception:
-                path.unlink(missing_ok=True)
-                raise
-            self._temporary_cookie_file = path
-            logger.info("STORY_YOUTUBE_COOKIES_READY source=railway_secret")
-            return path
+            return self._write_temporary_cookie_file(normalized, "railway_base64")
 
         if cookie_file and cookie_file.is_file():
             logger.info("STORY_YOUTUBE_COOKIES_READY source=file")
