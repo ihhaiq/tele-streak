@@ -32,7 +32,7 @@ def test_outsider_cannot_read_progress_or_generate_story():
         bot = Bot("123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi")
         bot.session = AsyncMock()
         try:
-            for data in ("adv:compare:10:20", "adv:video5:10:20"):
+            for data in ("adv:compare:10:20", "adv:image:10:20", "adv:video5:10:20"):
                 await router.callback_query.handlers[0].callback(
                     callback(999, data).as_(bot), bot
                 )
