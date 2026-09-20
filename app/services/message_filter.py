@@ -6,7 +6,7 @@ from app.streak_modes import MODE_MESSAGE, MODE_PHOTO_VIDEO, MODE_VOICE
 
 
 def should_count(message: Message) -> bool:
-    # This MVP only tracks private Business chats.
+    # الستريك يعمل فقط داخل محادثات Business الخاصة.
     if message.chat.type != "private":
         return False
 
