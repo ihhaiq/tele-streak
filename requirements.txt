@@ -4,3 +4,5 @@ aiosqlite>=0.20,<1.0
 Pillow>=11.0,<13.0
 python-dotenv>=1.0,<2.0
 uvloop>=0.21,<1.0; sys_platform != "win32"
+yt-dlp[default]>=2026.8.0,<2027.0
+deno>=2.9,<3.0
