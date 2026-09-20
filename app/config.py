@@ -23,12 +23,23 @@ class Settings:
     sticker_set_owner_id: int | None
     sticker_set_title: str
     story_music_path: Path | None = None
+    public_base_url: str | None = None
+    http_port: int = 8080
+    story_share_ttl_seconds: int = 900
 
 
 def _optional_int(name: str) -> int | None:
     value = os.getenv(name, "").strip()
     if not value:
         return None
+    try:
+        return int(value)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be an integer") from error
+
+
+def _int(name: str, default: int) -> int:
+    value = os.getenv(name, str(default)).strip()
     try:
         return int(value)
     except ValueError as error:
@@ -50,6 +61,10 @@ def load_settings() -> Settings:
 
     story_music = os.getenv("STORY_MUSIC_PATH", "").strip()
     effect_id = os.getenv("MESSAGE_EFFECT_ID", DEFAULT_FIRE_EFFECT_ID).strip()
+    public_base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    if not public_base_url and railway_domain:
+        public_base_url = f"https://{railway_domain}"
     return Settings(
         bot_token=token,
         database_path=database_path,
@@ -59,6 +74,9 @@ def load_settings() -> Settings:
         rendered_dir=rendered_dir,
         message_effect_id=effect_id or None,
         story_music_path=Path(story_music) if story_music else None,
+        public_base_url=public_base_url or None,
+        http_port=_int("PORT", 8080),
+        story_share_ttl_seconds=max(60, min(_int("STORY_SHARE_TTL_SECONDS", 900), 3600)),
         sticker_set_owner_id=_optional_int("STICKER_SET_OWNER_ID"),
         sticker_set_title=os.getenv("STICKER_SET_TITLE", "Jake Streak").strip()
         or "Jake Streak",
