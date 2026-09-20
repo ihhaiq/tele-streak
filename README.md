@@ -52,6 +52,7 @@ Optional settings:
 - `STICKER_SET_TITLE` — visible Telegram sticker-set title.
 - `STORY_MUSIC_ATTEMPTS` — YouTube search/download attempts for each story video (default 3).
 - `STORY_YOUTUBE_COOKIE_FILE` — optional cookies file for YouTube on cloud hosting.
+- `STORY_YOUTUBE_POT_PROVIDER_HOME` — bgutil PO-token server directory; Docker sets this to `/opt/bgutil-ytdlp-pot-provider/server`.
 - `STORY_SHARE_TTL_SECONDS` — how long a preview can still be published (default 900 seconds).
 
 ## Commands
@@ -203,7 +204,4 @@ then calls Telegram `postStory`. The original local file is removed immediately
 after a successful publish or when the request expires/replaces an older pending
 preview.
 
-YouTube extraction uses current `yt-dlp[default]` plus Deno/EJS support.
-`STORY_MUSIC_ATTEMPTS` controls retries. `STORY_YOUTUBE_COOKIE_FILE` is
-optional and can point to a cookies file when YouTube requires authenticated
-access on cloud hosting.
+YouTube extraction uses current `yt-dlp[default]`, Deno/EJS and the bgutil PO Token provider. The bot tries `mweb` with a generated PO token first, then `web_safari`, `android_vr`, and finally the default extractor. This is designed for cloud hosts such as Railway where YouTube may return 403 or bot-check responses. `STORY_MUSIC_ATTEMPTS` controls retries. `STORY_YOUTUBE_COOKIE_FILE` remains optional.
