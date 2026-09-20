@@ -182,6 +182,9 @@ def build_router(
         timezone_name = await repository.get_connection_timezone(
             request.business_connection_id
         )
+        owner_user_id = await repository.get_owner_id(
+            request.business_connection_id
+        )
 
         if event == "status":
             if streak is None:
@@ -200,6 +203,7 @@ def build_router(
                     break_count=streak.break_count,
                     freeze_count=streak.freeze_count,
                     last_completed_day=streak.last_completed_day,
+                    owner_user_id=owner_user_id or 0,
                     chat_id=streak.chat_id,
                     streak_mode=streak.streak_mode,
                     timezone_name=timezone_name,
