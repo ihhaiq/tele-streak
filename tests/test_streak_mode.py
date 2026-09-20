@@ -46,6 +46,7 @@ def test_status_places_mode_button_in_details_footer():
         break_count=1,
         freeze_count=3,
         last_completed_day="2026-09-19",
+        owner_user_id=777,
         chat_id=123456,
         streak_mode=MODE_PHOTO_VIDEO,
     )
@@ -54,19 +55,19 @@ def test_status_places_mode_button_in_details_footer():
     assert rich.html is not None
     assert "<details>" in rich.html
     assert "<footer>" in rich.html
-    assert 'data="streak_mode:open:123456"' in rich.html
+    assert 'data="streak_mode:open:777:123456"' in rich.html
     assert ">وضع الستريك</tg-button>" in rich.html
     assert "صورة / فيديو" in rich.html
 
 
 def test_mode_menu_marks_current_mode_and_has_all_choices():
-    rich = build_mode_menu(555, MODE_VOICE)
+    rich = build_mode_menu(777, 555, MODE_VOICE)
 
     assert rich.html is not None
     assert "✓ بصمة صوتية" in rich.html
-    assert "streak_mode:set:message:555" in rich.html
-    assert "streak_mode:set:photo_video:555" in rich.html
-    assert "streak_mode:cancel:555" in rich.html
+    assert "streak_mode:set:message:777:555" in rich.html
+    assert "streak_mode:set:photo_video:777:555" in rich.html
+    assert "streak_mode:cancel:777:555" in rich.html
 
 
 def test_repository_persists_streak_mode_across_restart(tmp_path):
