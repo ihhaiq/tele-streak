@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import secrets
 
+from app.streak_modes import STREAK_MODES
+
 from .engine import Database
 
 
@@ -13,6 +15,7 @@ class StreakRecord:
     business_connection_id: str
     chat_id: int
     peer_user_id: int | None
+    streak_mode: str
     current_streak: int
     longest_streak: int
     completed_days: int
@@ -74,6 +77,7 @@ class Repository:
                 if row["peer_user_id"] is not None
                 else None
             ),
+            streak_mode=str(row["streak_mode"]),
             current_streak=int(row["current_streak"]),
             longest_streak=int(row["longest_streak"]),
             completed_days=int(row["completed_days"]),
@@ -911,6 +915,73 @@ class Repository:
             value = bool((await cursor.fetchone())[column])
             await db.commit()
             return value
+
+    async def set_streak_mode(
+        self,
+        owner_user_id: int,
+        connection_id: str,
+        chat_id: int,
+        mode: str,
+        today: str,
+    ) -> StreakRecord | None:
+        if mode not in STREAK_MODES:
+            raise ValueError("unknown streak mode")
+
+        async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                UPDATE streaks
+                SET streak_mode=?,
+                    owner_sent_day=CASE
+                        WHEN last_completed_day=? THEN owner_sent_day
+                        ELSE NULL
+                    END,
+                    peer_sent_day=CASE
+                        WHEN last_completed_day=? THEN peer_sent_day
+                        ELSE NULL
+                    END,
+                    updated_at=?
+                WHERE business_connection_id=? AND chat_id=?
+                  AND EXISTS (
+                    SELECT 1
+                    FROM business_connections
+                    WHERE business_connection_id=?
+                      AND owner_user_id=?
+                      AND is_enabled=1
+                  )
+                """,
+                (
+                    mode,
+                    today,
+                    today,
+                    self._now(),
+                    connection_id,
+                    chat_id,
+                    connection_id,
+                    owner_user_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                return None
+
+            cursor = await db.execute(
+                """
+                SELECT s.* FROM streaks AS s
+                JOIN business_connections AS b
+                  ON b.business_connection_id=s.business_connection_id
+                WHERE b.owner_user_id=?
+                  AND s.business_connection_id=?
+                  AND s.chat_id=?
+                  AND b.is_enabled=1
+                LIMIT 1
+                """,
+                (owner_user_id, connection_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            await db.commit()
+            return self._streak_from_row(row) if row else None
 
     async def reset_streak(self, owner_user_id: int, chat_id: int) -> bool:
         async with self.database.connect() as db:

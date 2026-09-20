@@ -20,6 +20,7 @@ from app.handlers.errors import build_router as errors_router
 from app.handlers.guest import build_router as guest_router
 from app.handlers.guest_callbacks import build_router as guest_callbacks_router
 from app.handlers.private import build_router as private_router
+from app.handlers.streak_mode import build_router as streak_mode_router
 from app.handlers.streak_test import build_router as streak_test_router
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.scheduler import StreakScheduler
@@ -71,6 +72,7 @@ async def main() -> None:
         business_router(streaks, stickers, repository, activations, guests)
     )
     dp.include_router(guest_router(repository, stickers, revive_requests, guests))
+    dp.include_router(streak_mode_router(repository))
     dp.include_router(guest_callbacks_router(repository, revive_requests))
     dp.include_router(callbacks_router(repository, activations, streaks))
     dp.include_router(private_router(repository, stickers))
