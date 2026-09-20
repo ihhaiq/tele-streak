@@ -26,6 +26,11 @@ def story_menu(owner, chat):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text="صورة ستوري 🖼️", callback_data=f"adv:image:{owner}:{chat}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="٥ ثواني 🎬", callback_data=f"adv:video5:{owner}:{chat}"
                 ),
                 InlineKeyboardButton(
@@ -80,6 +85,7 @@ def build_router(repository, adventures) -> Router:
             "compare",
             "badges",
             "story",
+            "image",
             "video5",
             "video10",
             "status",
@@ -96,16 +102,20 @@ def build_router(repository, adventures) -> Router:
         if not callback.inline_message_id and not isinstance(callback.message, Message):
             await callback.answer()
             return
-        if action.startswith("video"):
+        if action == "image" or action.startswith("video"):
             if not record.is_enabled:
                 await callback.answer("فعّلوا الستريك أولًا.", show_alert=True)
                 return
-            await callback.answer("Jake دا يجهز الفيديو 🎬")
+            await callback.answer("Jake دا يجهز الستوري 🎨")
             try:
-                error = await adventures.send_story(record, owner, int(action[5:]))
+                error = (
+                    await adventures.send_story_image(record, owner)
+                    if action == "image"
+                    else await adventures.send_story(record, owner, int(action[5:]))
+                )
             except Exception:
                 logger.exception("STORY_RENDER_OR_SEND_FAILED")
-                error = "تعذر تجهيز الستوري هالمرة، جرب بعد شوي 🎬"
+                error = "تعذر تجهيز الستوري هالمرة، جرب بعد شوي 🎨"
             if error:
                 await bot.send_message(
                     chat_id=record.chat_id,
