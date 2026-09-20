@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 import wave
+from fractions import Fraction
 
 import pytest
 from PIL import Image, ImageChops, features
@@ -97,7 +98,7 @@ def test_real_story_has_motion_arabic_h265_aac_and_portrait_dimensions(
     video = next(s for s in meta["streams"] if s["codec_type"] == "video")
     audio = next(s for s in meta["streams"] if s["codec_type"] == "audio")
     assert (video["codec_name"], video["width"], video["height"]) == ("hevc", 720, 1280)
-    frame_rate = eval(video["r_frame_rate"], {"__builtins__": {}}, {})
+    frame_rate = Fraction(video["r_frame_rate"])
     keyframes = subprocess.check_output(
         [
             "ffprobe",
@@ -115,7 +116,7 @@ def test_real_story_has_motion_arabic_h265_aac_and_portrait_dimensions(
         ],
         text=True,
     ).strip().splitlines()
-    assert frame_rate == 24
+    assert frame_rate == Fraction(24, 1)
     assert len(keyframes) >= duration
     assert audio["codec_name"] == "aac"
     assert abs(float(meta["format"]["duration"]) - duration) < 0.15
