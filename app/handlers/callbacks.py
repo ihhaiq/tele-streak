@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository, StreakRecord
+from app.database.streak_mode_repository import StreakModeRepository
 from app.handlers.private import dashboard_keyboard
 from app.services.rich_status import protection_text
 from app.services.streak_service import StreakService
@@ -52,6 +53,7 @@ def build_router(
     repository: Repository,
     activations: StreakActivationRepository,
     streaks: StreakService,
+    streak_modes: StreakModeRepository,
 ) -> Router:
     router = Router(name="callbacks")
 
@@ -124,6 +126,98 @@ def build_router(
             await callback.answer()
             return
         await callback.answer(f"🔥 {days} يوم", show_alert=False)
+
+    @router.callback_query(F.data.startswith("streak_mode:menu:"))
+    async def streak_mode_menu(callback: CallbackQuery, bot: Bot) -> None:
+        try:
+            chat_id = int((callback.data or "").rsplit(":", 1)[-1])
+        except ValueError:
+            await callback.answer()
+            return
+
+        target = await streak_modes.target_for_user(callback.from_user.id, chat_id)
+        if target is None:
+            await callback.answer("هذا الستريك مو تابع إلك.", show_alert=True)
+            return
+
+        current = await streak_modes.get_mode(target.business_connection_id, chat_id)
+        labels = {
+            "message": "أي رسالة",
+            "media": "صورة / فيديو",
+            "voice": "بصمة صوتية",
+        }
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=("✓ " if current == "message" else "") + "💬 أي رسالة",
+                callback_data=f"streak_mode:set:message:{chat_id}",
+            )],
+            [InlineKeyboardButton(
+                text=("✓ " if current == "media" else "") + "🖼 صورة / فيديو",
+                callback_data=f"streak_mode:set:media:{chat_id}",
+            )],
+            [InlineKeyboardButton(
+                text=("✓ " if current == "voice" else "") + "🎙 بصمة صوتية",
+                callback_data=f"streak_mode:set:voice:{chat_id}",
+            )],
+        ])
+        await bot.send_message(
+            chat_id=chat_id,
+            business_connection_id=target.business_connection_id,
+            text=(
+                "⚙️ تغيير وضع الستريك\n\n"
+                f"الوضع الحالي: {labels[current]}\n"
+                "اختار شنو لازم يرسله كل طرف حتى ينحسب الستريك:"
+            ),
+            reply_markup=keyboard,
+        )
+        await callback.answer()
+
+    @router.callback_query(F.data.startswith("streak_mode:set:"))
+    async def set_streak_mode(callback: CallbackQuery) -> None:
+        try:
+            _, _, mode, raw_chat_id = (callback.data or "").split(":", 3)
+            chat_id = int(raw_chat_id)
+        except (ValueError, IndexError):
+            await callback.answer()
+            return
+
+        target = await streak_modes.target_for_user(callback.from_user.id, chat_id)
+        if target is None:
+            await callback.answer("هذا الستريك مو تابع إلك.", show_alert=True)
+            return
+
+        labels = {
+            "message": "💬 أي رسالة",
+            "media": "🖼 صورة / فيديو",
+            "voice": "🎙 بصمة صوتية",
+        }
+        if mode not in labels:
+            await callback.answer("وضع غير صالح.", show_alert=True)
+            return
+
+        await streak_modes.set_mode(target.business_connection_id, chat_id, mode)
+        if callback.message is not None:
+            with suppress(TelegramBadRequest):
+                await callback.message.edit_text(
+                    "⚙️ تغيير وضع الستريك\n\n"
+                    f"الوضع الحالي: {labels[mode]}\n"
+                    "من هسه هذا النوع فقط ينحسب لإكمال الستريك.",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(
+                            text=("✓ " if mode == "message" else "") + "💬 أي رسالة",
+                            callback_data=f"streak_mode:set:message:{chat_id}",
+                        )],
+                        [InlineKeyboardButton(
+                            text=("✓ " if mode == "media" else "") + "🖼 صورة / فيديو",
+                            callback_data=f"streak_mode:set:media:{chat_id}",
+                        )],
+                        [InlineKeyboardButton(
+                            text=("✓ " if mode == "voice" else "") + "🎙 بصمة صوتية",
+                            callback_data=f"streak_mode:set:voice:{chat_id}",
+                        )],
+                    ]),
+                )
+        await callback.answer("تم تغيير وضع الستريك")
 
     @router.callback_query(F.data == "dash:stats")
     async def stats(callback: CallbackQuery) -> None:
