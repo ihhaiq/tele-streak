@@ -193,10 +193,34 @@ class Repository:
         is_enabled: bool,
         timezone_name: str = "Asia/Baghdad",
     ) -> None:
-        """Persist a Business connection and preserve streaks across reconnects."""
+        """Bind transient Business connection IDs to one persistent owner state."""
         now = self._now()
         async with self.database.connect() as db:
             await db.execute("BEGIN IMMEDIATE")
+
+            current = await (
+                await db.execute(
+                    """SELECT timezone FROM business_connections
+                    WHERE business_connection_id=?""",
+                    (connection_id,),
+                )
+            ).fetchone()
+            previous = await (
+                await db.execute(
+                    """SELECT timezone FROM business_connections
+                    WHERE owner_user_id=? AND business_connection_id<>?
+                    ORDER BY updated_at DESC LIMIT 1""",
+                    (owner_user_id, connection_id),
+                )
+            ).fetchone()
+            preserved_timezone = (
+                str(current["timezone"])
+                if current is not None
+                else str(previous["timezone"])
+                if previous is not None
+                else timezone_name
+            )
+
             await db.execute(
                 """
                 INSERT INTO business_connections(
@@ -207,6 +231,11 @@ class Repository:
                     owner_user_id=excluded.owner_user_id,
                     user_chat_id=excluded.user_chat_id,
                     is_enabled=excluded.is_enabled,
+                    timezone=CASE
+                        WHEN business_connections.timezone IS NOT NULL
+                        THEN business_connections.timezone
+                        ELSE excluded.timezone
+                    END,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -214,7 +243,7 @@ class Repository:
                     owner_user_id,
                     user_chat_id,
                     int(is_enabled),
-                    timezone_name,
+                    preserved_timezone,
                     now,
                 ),
             )
@@ -225,7 +254,49 @@ class Repository:
                     owner_user_id=owner_user_id,
                     now=now,
                 )
+                await db.execute(
+                    """UPDATE business_connections
+                    SET is_enabled=0, updated_at=?
+                    WHERE owner_user_id=? AND business_connection_id<>?
+                      AND is_enabled=1""",
+                    (now, owner_user_id, connection_id),
+                )
             await db.commit()
+
+    async def resolve_active_connection_id(
+        self, connection_id: str
+    ) -> str | None:
+        """Resolve any known historical connection to the owner's active one."""
+        async with self.database.connect() as db:
+            row = await (
+                await db.execute(
+                    """
+                    SELECT active.business_connection_id
+                    FROM business_connections AS source
+                    JOIN business_connections AS active
+                      ON active.owner_user_id=source.owner_user_id
+                    WHERE source.business_connection_id=?
+                      AND active.is_enabled=1
+                    ORDER BY
+                      CASE WHEN active.business_connection_id=? THEN 0 ELSE 1 END,
+                      active.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (connection_id, connection_id),
+                )
+            ).fetchone()
+            return str(row["business_connection_id"]) if row else None
+
+    async def get_connection_owner_id(self, connection_id: str) -> int | None:
+        async with self.database.connect() as db:
+            row = await (
+                await db.execute(
+                    """SELECT owner_user_id FROM business_connections
+                    WHERE business_connection_id=?""",
+                    (connection_id,),
+                )
+            ).fetchone()
+            return int(row["owner_user_id"]) if row else None
 
     async def disable_connection(self, connection_id: str) -> None:
         async with self.database.connect() as db:
