@@ -10,18 +10,18 @@ def should_count(message: Message) -> bool:
     if message.chat.type != "private":
         return False
 
-    # Ignore anything the connected bot itself sent on behalf of the business account.
+    # تجاهل رسائل البوت نفسه.
     if getattr(message, "sender_business_bot", None) is not None:
         return False
 
-    # Greeting/away/scheduled automatic business messages should not create activity.
+    # رسائل الترحيب والغياب والرسائل التلقائية ما تنحسب.
     if bool(getattr(message, "is_from_offline", False)):
         return False
 
     if message.from_user and message.from_user.is_bot:
         return False
 
-    # Service messages do not contain normal user content. Count common human message types.
+    # نحسب فقط الرسائل والمحتوى الطبيعي من المستخدم.
     return any(
         (
             message.text,
