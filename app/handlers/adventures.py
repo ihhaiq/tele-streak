@@ -25,19 +25,21 @@ def story_menu(owner, chat):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="صورة ستوري 🖼️",
+                    text="صورة",
                     callback_data=f"adv:image:{owner}:{chat}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="٥ ثواني 🎬",
+                    text="فيديو · 5 ثواني",
                     callback_data=f"adv:video5:{owner}:{chat}",
-                ),
+                )
+            ],
+            [
                 InlineKeyboardButton(
-                    text="١٠ ثواني 🎬",
+                    text="فيديو · 10 ثواني",
                     callback_data=f"adv:video10:{owner}:{chat}",
-                ),
+                )
             ],
             [
                 InlineKeyboardButton(
@@ -167,9 +169,8 @@ def build_router(repository, adventures) -> Router:
             keyboard = navigation(owner, chat)
         elif action == "story":
             text = (
-                "🎬 مشاركة ستوري\n"
-                "اختار صورة أو فيديو. بوت الأعمال راح يرفع المعاينة بنفس المحادثة "
-                "ومعاها زر «نشر الستوري». ما ينشر شي قبل ما تضغط الزر."
+                "مشاركة ستوري\n"
+                "اختار المعاينة. النشر يتم بعد تأكيدك."
             )
             rich = rich_story_page(owner, chat)
             keyboard = story_menu(owner, chat)
