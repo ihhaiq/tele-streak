@@ -64,37 +64,51 @@ def build_streak_rich_message(
     adventure_profile: Profile | None = None,
 ) -> InputRichMessage:
     last_day = last_completed_day or "لا يوجد"
-    breaks = (
-        f"عدد مرات انقطاع الستريك: <b>{break_count}</b><br>"
-        if break_count > 0
-        else ""
-    )
     remaining = remaining_day_text(timezone_name)
     midnight_unix = end_of_day_unix(timezone_name)
     mode_label = streak_mode_label(streak_mode)
-    progress = ('<p>' + escape(progress_text(adventure_profile)).replace('\n', '<br>') + '</p>') if adventure_profile else ''
+
+    details = [
+        f"<li>الأيام: <b>{completed_days}</b></li>",
+        f"<li>آخر نجاح: <b>{escape(last_day)}</b></li>",
+        f"<li>الوضع: <b>{escape(mode_label)}</b></li>",
+    ]
+    if break_count > 0:
+        details.append(f"<li>الانقطاعات: <b>{break_count}</b></li>")
+
+    progress = ""
+    if adventure_profile is not None:
+        progress = (
+            "<h3>التقدم</h3><p>"
+            + escape(progress_text(adventure_profile)).replace("\n", "<br>")
+            + "</p>"
+        )
+
     return InputRichMessage(
         html=(
-            "<h1>🔥 حالة الستريك</h1>"
-            "<details><summary>تفاصيل الستريك 🫠</summary>"
+            "<h1>🔥 الستريك</h1>"
             "<p>"
-            f"الستريك الحالي: <b>{current}</b><br>"
-            f"أطول ستريك: <b>{longest}</b><br>"
-            f"إجمالي أيام الستريك: <b>{completed_days}</b><br>"
-            f"{breaks}"
-            f"الحماية المتاحة: <b>{protection_text(freeze_count)}</b><br>"
-            f"آخر يوم ناجح: <b>{last_day}</b><br>"
-            f"وضع الستريك: <b>{mode_label}</b>"
+            f"<b>{current} يوم</b> حاليًا · الأعلى <b>{longest}</b><br>"
+            f"الحماية: <b>{protection_text(freeze_count)}</b>"
             "</p>"
-            f"{progress}"
-            "<h3>الخيارات</h3>"
-            f"{rich_buttons(owner_user_id, chat_id, include_mode=True)}"
-            "</details>"
             "<p>"
             "<tg-button type=\"disabled\">⏳ "
             f"<tg-time unix=\"{midnight_unix}\" format=\"r\">{remaining}</tg-time>"
             "</tg-button>"
             "</p>"
+            "<details><summary>التفاصيل</summary>"
+            "<ul>"
+            + "".join(details)
+            + "</ul>"
+            + progress
+            + "<hr/>"
+            "<h3>الخيارات</h3>"
+            + rich_buttons(
+                owner_user_id,
+                chat_id,
+                include_mode=True,
+            )
+            + "</details>"
         ),
         is_rtl=True,
     )
@@ -113,22 +127,16 @@ def build_streak_fallback_text(
     adventure_profile: Profile | None = None,
 ) -> str:
     lines = [
-        "🔥 حالة الستريك",
-        "",
-        f"الستريك الحالي: {current}",
-        f"أطول ستريك: {longest}",
-        f"إجمالي أيام الستريك: {completed_days}",
+        "🔥 الستريك",
+        f"{current} يوم · الأعلى {longest}",
+        f"الحماية: {protection_text(freeze_count)}",
+        f"الأيام: {completed_days}",
+        f"آخر نجاح: {last_completed_day or 'لا يوجد'}",
+        f"الوضع: {streak_mode_label(streak_mode)}",
     ]
     if break_count > 0:
-        lines.append(f"عدد مرات انقطاع الستريك: {break_count}")
-    lines.extend(
-        [
-            f"الحماية المتاحة: {protection_text(freeze_count)}",
-            f"آخر يوم ناجح: {last_completed_day or 'لا يوجد'}",
-            f"وضع الستريك: {streak_mode_label(streak_mode)}",
-            f"⏳ المتبقي لنهاية اليوم: {remaining_day_text(timezone_name)}",
-        ]
-    )
+        lines.append(f"الانقطاعات: {break_count}")
+    lines.append(f"⏳ المتبقي: {remaining_day_text(timezone_name)}")
     if adventure_profile:
         lines.extend(["", progress_text(adventure_profile)])
     return "\n".join(lines)
