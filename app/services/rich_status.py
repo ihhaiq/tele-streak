@@ -17,6 +17,10 @@ def _timezone(name: str | None) -> ZoneInfo:
         return ZoneInfo(DEFAULT_TIMEZONE)
 
 
+def current_day(timezone_name: str | None) -> str:
+    return datetime.now(_timezone(timezone_name)).date().isoformat()
+
+
 def end_of_day_unix(timezone_name: str | None) -> int:
     timezone = _timezone(timezone_name)
     now = datetime.now(timezone)
