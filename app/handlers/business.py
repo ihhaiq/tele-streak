@@ -11,7 +11,7 @@ from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
 from app.keyboards.streak import start_request_keyboard
 from app.services.guest_delivery import GuestDeliveryService
-from app.services.message_filter import should_count
+from app.services.message_filter import matches_streak_mode, should_count
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
 
@@ -151,6 +151,8 @@ def build_router(
                         break_count=status.break_count,
                         freeze_count=status.freeze_count,
                         last_completed_day=status.last_completed_day,
+                        chat_id=message.chat.id,
+                        streak_mode=record.streak_mode,
                         timezone_name=timezone_name,
                     )
             elif connection_id:
@@ -342,6 +344,9 @@ def build_router(
             return
 
         if record is not None and not record.is_enabled:
+            return
+
+        if record is not None and not matches_streak_mode(message, record.streak_mode):
             return
 
         completion = await streaks.register_message(message)
