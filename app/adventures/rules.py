@@ -16,7 +16,7 @@ EVENTS = {
     "double": "يوم XP مضاعف ✨",
     "shield": "هدية حماية عند إكمال اليوم 🧊",
     "combo": "مكافأة Combo إضافية 🔥",
-    "rare": "ظهرت مهمة نادرة 🎁",
+    "rare": "حدث نادر 🎁",
     "fast": "يوم سريع: كملوا خلال ١٠ دقائق ⚡",
     "calm": "يوم هدوء: كملوا قبل ١٠ بالليل 🌙",
 }
@@ -91,7 +91,6 @@ def make_day(day: str, profile: Profile, hour: int, rng=None) -> dict:
         done=[],
         event=event,
         first={},
-        photo_roles=[],
         completed=False,
         all_bonus=False,
         notice_count=0,
