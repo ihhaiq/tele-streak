@@ -50,6 +50,9 @@ Optional settings:
 - `STICKER_SET_OWNER_ID` — required numeric developer Telegram ID. The three
   packs are global and shared by all bot users; ownership never follows users.
 - `STICKER_SET_TITLE` — visible Telegram sticker-set title.
+- `STORY_MUSIC_ATTEMPTS` — YouTube search/download attempts for each story video (default 3).
+- `STORY_YOUTUBE_COOKIE_FILE` — optional cookies file for YouTube on cloud hosting.
+- `STORY_SHARE_TTL_SECONDS` — how long a preview can still be published (default 900 seconds).
 
 ## Commands
 
