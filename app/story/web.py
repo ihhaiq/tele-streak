@@ -128,8 +128,9 @@ class StoryShareWeb:
         self.share_dir.mkdir(parents=True, exist_ok=True)
         self.signer = StoryShareSigner(bot_token, ttl_seconds)
         self.ttl_seconds = self.signer.ttl_seconds
+        self.server_enabled = bool(self.public_base_url)
         self.enabled = bool(
-            self.bot_username and self.public_base_url and main_app_enabled
+            self.server_enabled and self.bot_username and main_app_enabled
         )
         self._runner: web.AppRunner | None = None
 
@@ -231,7 +232,7 @@ class StoryShareWeb:
         return response
 
     async def start(self, host: str, port: int) -> None:
-        if not self.enabled or self._runner is not None:
+        if not self.server_enabled or self._runner is not None:
             return
         app = web.Application(client_max_size=1024 * 1024)
         app.router.add_get("/story/app", self._app)
