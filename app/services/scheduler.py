@@ -12,6 +12,10 @@ from app.services.sticker_service import StickerService
 logger = logging.getLogger(__name__)
 
 
+def _transport_unavailable(result) -> bool:
+    return bool(getattr(result, "transport_unavailable", False))
+
+
 class StreakScheduler:
     def __init__(
         self,
@@ -74,7 +78,8 @@ class StreakScheduler:
                         connection_id=streak.business_connection_id,
                         chat_id=streak.chat_id,
                     )
-                    if not sticker_sent:
+                    transport_blocked = _transport_unavailable(sticker_sent)
+                    if not sticker_sent and not transport_blocked:
                         await self.stickers.send_special(
                             connection_id=streak.business_connection_id,
                             chat_id=streak.chat_id,
@@ -90,16 +95,25 @@ class StreakScheduler:
                     else:
                         missing = "الطرف الثاني لم يرسل اليوم"
 
-                    notice_sent = await self.guests.summon(
-                        event="warning_notice",
-                        connection_id=streak.business_connection_id,
-                        chat_id=streak.chat_id,
-                    )
-                    if not notice_sent:
-                        await self.stickers.send_notice_text(
+                    notice_sent = False
+                    if not transport_blocked:
+                        notice_sent = await self.guests.summon(
+                            event="warning_notice",
                             connection_id=streak.business_connection_id,
                             chat_id=streak.chat_id,
-                            text=f"⏰ بقي أقل من ساعتين. {missing} وقد ينقطع الستريك.",
+                        )
+                        transport_blocked = _transport_unavailable(notice_sent)
+                        if not notice_sent and not transport_blocked:
+                            await self.stickers.send_notice_text(
+                                connection_id=streak.business_connection_id,
+                                chat_id=streak.chat_id,
+                                text=f"⏰ بقي أقل من ساعتين. {missing} وقد ينقطع الستريك.",
+                            )
+                    if transport_blocked:
+                        logger.warning(
+                            "WARNING_DELIVERY_SKIPPED connection=%s chat=%s",
+                            streak.business_connection_id,
+                            streak.chat_id,
                         )
                     logger.info(
                         "WARNING_SENT connection=%s chat=%s guest_sticker=%s guest_notice=%s",

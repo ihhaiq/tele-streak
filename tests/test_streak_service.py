@@ -107,3 +107,44 @@ def test_approved_peer_request_counts_peer_then_waits_for_owner(tmp_path):
         await database.close()
 
     asyncio.run(scenario())
+
+
+def test_stale_message_connection_can_use_latest_owner_connection(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "test.db")
+        await database.init()
+        repository = Repository(database)
+        activations = StreakActivationRepository(database)
+
+        await repository.upsert_connection("bc-old", 10, 10, True)
+        await activations.activate("bc-old", 20)
+        await repository.register_activity(
+            connection_id="bc-old",
+            chat_id=20,
+            message_id=1,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-18",
+            yesterday="2026-09-17",
+            choose_pose=lambda days, last: "pose",
+        )
+        await repository.upsert_connection("bc-old", 10, 10, False)
+        await repository.upsert_connection("bc-new", 10, 10, True)
+
+        service = make_service(database, repository)
+        stale = message("bc-old", 20, 30, 2)
+        completion = await service.register_message(
+            stale,
+            connection_id="bc-new",
+        )
+
+        assert completion.completed
+        assert completion.days == 1
+        record = await repository.get_streak("bc-new", 20)
+        assert record is not None
+        assert record.peer_user_id == 30
+        assert await repository.get_streak("bc-old", 20) is None
+
+        await database.close()
+
+    asyncio.run(scenario())
