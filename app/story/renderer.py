@@ -146,9 +146,89 @@ def soundtrack(path: Path, seconds: int):
         output.writeframes(samples.tobytes())
 
 
+def story_card(
+    *,
+    days: int,
+    names: tuple[str, str],
+    photos: tuple[Path | None, Path | None] = (None, None),
+) -> Image.Image:
+    """Build the still 9:16 story requested by the product flow."""
+    if days < 1:
+        raise ValueError("Story requires a positive streak")
+
+    image = Image.new("RGB", (WIDTH, HEIGHT))
+    draw = ImageDraw.Draw(image)
+    palette = ("#ffd56b", "#7ce3d2", "#e4a9ff", "#ff969f")
+
+    for y in range(HEIGHT):
+        draw.line(
+            (0, y, WIDTH, y),
+            fill=(
+                19 + y * 7 // HEIGHT,
+                25 + y * 8 // HEIGHT,
+                57 + y * 17 // HEIGHT,
+            ),
+        )
+
+    draw.rounded_rectangle((210, 92, 510, 141), radius=24, fill="#303b66")
+    centered(draw, "JAKE & FRIENDS", 116, 19, "#ffe8a6")
+    centered(draw, "ستريك متتالي", 213, 48, "white")
+    centered(draw, f"لـ {days} يوم", 286, 68, "#ffd56b")
+
+    rng = random.Random(84 + days)
+    for _ in range(72):
+        x = rng.randrange(35, WIDTH - 35)
+        y = rng.randrange(360, 1110)
+        color = rng.choice(palette)
+        if 500 < y < 990 and 150 < x < 570:
+            continue
+        draw.rounded_rectangle((x, y, x + 6, y + 13), radius=2, fill=color)
+
+    canvas = image.convert("RGBA")
+    jake = celebration_art(460)
+    canvas.alpha_composite(jake, (WIDTH // 2 - 230, 595))
+
+    balls = [
+        avatar_ball(name, photo, palette[index])
+        for index, (name, photo) in enumerate(zip(names, photos))
+    ]
+    positions = ((72, 445), (456, 445))
+    for ball, position in zip(balls, positions):
+        canvas.alpha_composite(ball, position)
+
+    # خطوط الحركة تخلي الكرتين يبينن كأن Jake دا يلعب بيهن.
+    motion = ImageDraw.Draw(canvas)
+    motion.arc((95, 382, 625, 720), start=202, end=338, fill="#ffffff88", width=5)
+    motion.arc((127, 414, 593, 690), start=205, end=335, fill="#ffd56b88", width=3)
+
+    footer = ImageDraw.Draw(canvas)
+    footer.rounded_rectangle((92, 1080, 628, 1165), radius=34, fill="#142342")
+    centered(footer, "كل يوم، أقرب 🤝", 1121, 30, "white")
+    centered(footer, "STREAK TOGETHER", 1208, 16, "#919aba")
+    return canvas.convert("RGB")
+
+
 class StoryRenderer:
     def __init__(self, music_path: Path | None = None):
         self.music_path = music_path
+
+
+    def render_image(
+        self,
+        directory: Path,
+        *,
+        days: int,
+        names: tuple[str, str],
+        photos: tuple[Path | None, Path | None] = (None, None),
+    ) -> Path:
+        if not features.check_feature("raqm"):
+            raise RuntimeError("Pillow must support RAQM for Arabic text")
+        directory.mkdir(parents=True, exist_ok=True)
+        output = directory / "streak-story.png"
+        story_card(days=days, names=names, photos=photos).save(
+            output, "PNG", optimize=True
+        )
+        return output
 
     def render(
         self,
