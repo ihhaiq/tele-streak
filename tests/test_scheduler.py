@@ -35,6 +35,16 @@ class FakeStickers:
         self.notices.append(kwargs)
 
 
+class TransportFailure:
+    transport_unavailable = True
+
+    def __bool__(self):
+        return False
+
+    def __str__(self):
+        return "False"
+
+
 class FakeGuests:
     def __init__(self, succeeds=True):
         self.succeeds = succeeds
@@ -146,3 +156,34 @@ def test_broken_streak_does_not_send_business_fallback_if_guest_is_unavailable()
     assert stickers.special == []
     assert stickers.notices == []
 
+
+
+def test_scheduler_does_not_fallback_after_business_transport_failure():
+    class TransportGuests(FakeGuests):
+        async def summon(self, **kwargs):
+            self.events.append(kwargs)
+            return TransportFailure()
+
+    today = datetime.now(timezone.utc).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    streak = StreakRecord(
+        business_connection_id="bc-old", chat_id=20, peer_user_id=30, streak_mode="message",
+        current_streak=5, longest_streak=5, completed_days=5,
+        break_count=0, last_completed_day=yesterday,
+        owner_sent_day=today.isoformat(), peer_sent_day=None,
+        last_pose="pose", last_success_message_id=None,
+        last_warning_day=None, last_broken_day=None,
+        notifications_enabled=True, is_enabled=True,
+        freeze_count=1, auto_freeze=True, freezes_used=0,
+        created_at="2026-09-01", updated_at="2026-09-16",
+    )
+    repository = FakeRepository(streak)
+    stickers = FakeStickers()
+    guests = TransportGuests()
+    scheduler = StreakScheduler(repository, stickers, guests, warning_hour=0)
+
+    asyncio.run(scheduler.run_once())
+
+    assert [event["event"] for event in guests.events] == ["warning_sticker"]
+    assert stickers.special == []
+    assert stickers.notices == []
