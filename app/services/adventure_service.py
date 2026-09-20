@@ -45,6 +45,7 @@ class AdventureService:
         share_dir: Path | None = None,
         share_ttl_seconds: int = 900,
         youtube_cookie_file: Path | None = None,
+        youtube_cookies_b64: str | None = None,
         youtube_pot_provider_home: Path | None = None,
         music_attempts: int = 3,
     ):
@@ -55,6 +56,7 @@ class AdventureService:
         self.renderer = StoryRenderer()
         self.music = YouTubeStoryMusic(
             cookie_file=youtube_cookie_file,
+            cookies_b64=youtube_cookies_b64,
             pot_provider_home=youtube_pot_provider_home,
             attempts=music_attempts,
         )
@@ -464,3 +466,7 @@ class AdventureService:
             [request.media_path, request.thumbnail_path],
         )
         return StoryPublishResult("published", story_id)
+
+
+    async def close(self) -> None:
+        await asyncio.to_thread(self.music.close)
