@@ -485,10 +485,42 @@ def test_snapshot_rotates_tasks_once_per_six_hour_slot(tmp_path):
             _, rotated = await data.snapshot("bc", 20, at(hour=18))
             assert rotated["task_slot"] != first_slot
             assert len(rotated["tasks"]) == 6
+            assert set(rotated["tasks"]).isdisjoint(first_tasks)
             assert rotated["done"] == []
             assert rotated["all_bonus"] is False
             specs = active_task_specs(rotated)
             assert len({spec.xp for spec in specs}) == 6
+        finally:
+            await db.close()
+
+    asyncio.run(run())
+
+
+def test_legacy_task_state_rotates_into_new_catalog(tmp_path):
+    async def run():
+        db, repo, data = await setup(tmp_path / "test.db")
+        try:
+            async with db.connect() as conn:
+                await conn.execute(
+                    """INSERT INTO adventure_days(
+                        business_connection_id, chat_id, day, state
+                    ) VALUES (?, ?, ?, ?)""",
+                    (
+                        "bc",
+                        20,
+                        "2026-09-20",
+                        '{"tasks":["photo","words"],"done":[],"event":"","first":{},'
+                        '"completed":false,"all_bonus":false,"notice_count":0,'
+                        '"latest_notice":"","secret_roll":false}',
+                    ),
+                )
+                await conn.commit()
+
+            _, state = await data.snapshot("bc", 20, at(hour=12))
+            assert len(state["tasks"]) == 6
+            assert state["task_slot"] == task_slot(at(hour=12))
+            assert "photo" not in state["tasks"]
+            assert "words" not in state["tasks"]
         finally:
             await db.close()
 
