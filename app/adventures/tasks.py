@@ -361,7 +361,8 @@ def choose_tasks(rng=None, count: int = TASKS_PER_SLOT) -> list[str]:
     for spec in candidates:
         if spec.xp in used_xp:
             continue
-        if family_counts.get(spec.family, 0) >= 2:
+        family_limit = 1 if spec.family in {"starter", "speed"} else 2
+        if family_counts.get(spec.family, 0) >= family_limit:
             continue
         selected.append(spec)
         used_xp.add(spec.xp)
@@ -385,6 +386,7 @@ def ensure_task_slot(state: dict, at: datetime, rng=None) -> bool:
     state["done"] = []
     state["all_bonus"] = False
     state["slot_stats"] = empty_slot_stats()
+    state["pending"] = []
     return True
 
 
