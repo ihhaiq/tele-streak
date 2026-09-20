@@ -11,6 +11,7 @@ from aiogram.types import Message
 
 from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
+from app.services.message_filter import matches_streak_mode
 from app.stickers.poses import PoseCatalog
 
 logger = logging.getLogger(__name__)
@@ -143,6 +144,11 @@ class StreakService:
                 record = await self.repository.get_streak(connection_id, message.chat.id)
                 if record is not None and not record.is_enabled:
                     completion = Completion(False)
+                elif not matches_streak_mode(
+                    message,
+                    record.streak_mode if record is not None else "message",
+                ):
+                    completion = Completion(False)
                 else:
                     sender_id = message.from_user.id
                     role = "owner" if sender_id == owner_id else "peer"
@@ -178,6 +184,12 @@ class StreakService:
                 completion = Completion(False)
             else:
                 await self.activations.activate(connection_id, message.chat.id)
+                record = await self.repository.get_streak(connection_id, message.chat.id)
+                mode = record.streak_mode if record is not None else "message"
+                if not matches_streak_mode(message, mode):
+                    completion = Completion(False)
+                    self._release_lock(key)
+                    return completion
                 today, yesterday = await self._days(connection_id)
                 result = await self.repository.register_activity(
                     connection_id=connection_id,
