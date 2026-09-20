@@ -108,6 +108,8 @@ class StickerService:
                 rich_message=build_broken_notice_rich_message(),
             )
         except TelegramBadRequest as error:
+            if is_business_transport_error(error):
+                raise
             logger.warning("BROKEN_NOTICE_RICH_REJECTED error=%s", error)
             return await self.bot.send_message(
                 chat_id=chat_id,
