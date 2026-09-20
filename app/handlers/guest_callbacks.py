@@ -52,7 +52,6 @@ def build_router(
             return
 
         token = (callback.data or "").split(":", 1)[-1]
-        await callback.answer("جاري نشر الستوري 🚀")
         result = await adventures.publish_story(token, callback.from_user.id)
 
         if result.status == "published":
