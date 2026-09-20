@@ -11,6 +11,7 @@ from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository, StreakRecord
 from app.handlers.private import dashboard_keyboard
 from app.services.rich_status import protection_text
+from app.streak_modes import streak_mode_label
 from app.services.streak_service import StreakService
 
 
@@ -35,6 +36,7 @@ def _details(streak: StreakRecord) -> str:
         f"الستريك الحالي: {streak.current_streak}",
         f"أطول ستريك: {streak.longest_streak}",
         f"إجمالي أيام الستريك: {streak.completed_days}",
+        f"وضع الستريك: {streak_mode_label(streak.streak_mode)}",
     ]
     if streak.break_count > 0:
         lines.append(f"مرات الانقطاع: {streak.break_count}")
