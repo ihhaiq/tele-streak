@@ -112,6 +112,53 @@ class AdventureService:
             logger.info("STORY_AVATAR_UNAVAILABLE user=%s", user_id)
         return name, None
 
+    async def send_story_image(self, record, owner: int) -> str | None:
+        if record.current_streak < 1:
+            return "كملوا أول يوم حتى نسوي ستوري 🔥"
+        if self._story_slots.locked():
+            return "Jake دا يجهز ستوريات، جرب بعد شوي 😆"
+        async with self._story_slots:
+            profile, _ = await self.snapshot(
+                record.business_connection_id, record.chat_id
+            )
+            if not await self.data.claim_story(
+                record.business_connection_id,
+                record.chat_id,
+                datetime.now(timezone.utc).timestamp(),
+            ):
+                return "انتظر دقيقة بين كل ستوري والثاني 🖼️"
+            with TemporaryDirectory(prefix="streak-story-") as directory:
+                folder = Path(directory)
+                first, second = await asyncio.gather(
+                    self._participant(
+                        owner,
+                        profile.stats["owner"]["name"] or "الطرف الأول",
+                        folder / "owner.jpg",
+                    ),
+                    self._participant(
+                        record.peer_user_id or record.chat_id,
+                        profile.stats["peer"]["name"] or "الطرف الثاني",
+                        folder / "peer.jpg",
+                    ),
+                )
+                path = await asyncio.to_thread(
+                    self.renderer.render_image,
+                    folder,
+                    days=record.current_streak,
+                    names=(first[0], second[0]),
+                    photos=(first[1], second[1]),
+                )
+                await self.bot.send_photo(
+                    chat_id=record.chat_id,
+                    business_connection_id=record.business_connection_id,
+                    photo=FSInputFile(path, filename="streak-story.png"),
+                    caption=(
+                        f"🔥 ستريك متتالي لـ {record.current_streak} يوم!\n"
+                        "احفظوا الصورة وشاركوها بستوري 🖼️"
+                    ),
+                )
+        return None
+
     async def send_story(self, record, owner: int, duration: int) -> str | None:
         if record.current_streak < 1:
             return "كملوا أول يوم حتى نسوي ستوري 🔥"
