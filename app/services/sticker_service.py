@@ -114,6 +114,12 @@ class StickerService:
         last_completed_day: str | None,
         timezone_name: str | None = None,
     ) -> None:
+        streak = await self.repository.get_streak(connection_id, chat_id)
+        settings_token = await self.repository.ensure_streak_settings_token(
+            connection_id,
+            chat_id,
+        )
+        streak_mode = streak.streak_mode if streak is not None else "message"
         rich_message = build_streak_rich_message(
             current=current,
             longest=longest,
@@ -122,6 +128,8 @@ class StickerService:
             freeze_count=freeze_count,
             last_completed_day=last_completed_day,
             timezone_name=timezone_name,
+            streak_mode=streak_mode,
+            settings_token=settings_token,
         )
         kwargs = dict(
             chat_id=chat_id,
@@ -165,6 +173,7 @@ class StickerService:
                 freeze_count=freeze_count,
                 last_completed_day=last_completed_day,
                 timezone_name=timezone_name,
+                streak_mode=streak_mode,
             ),
         )
 
