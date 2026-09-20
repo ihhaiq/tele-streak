@@ -6,6 +6,15 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from aiogram.types import InputRichMessage
 
 DEFAULT_TIMEZONE = "Asia/Baghdad"
+STREAK_MODE_LABELS = {
+    "message": "أي رسالة",
+    "media": "صورة / فيديو",
+    "voice": "بصمة صوتية",
+}
+
+
+def streak_mode_label(mode: str) -> str:
+    return STREAK_MODE_LABELS.get(mode, STREAK_MODE_LABELS["message"])
 
 
 def _timezone(name: str | None) -> ZoneInfo:
@@ -49,6 +58,8 @@ def build_streak_rich_message(
     freeze_count: int,
     last_completed_day: str | None,
     timezone_name: str | None = DEFAULT_TIMEZONE,
+    streak_mode: str = "message",
+    settings_token: str | None = None,
 ) -> InputRichMessage:
     last_day = last_completed_day or "لا يوجد"
     breaks = (
@@ -58,6 +69,15 @@ def build_streak_rich_message(
     )
     remaining = remaining_day_text(timezone_name)
     midnight_unix = end_of_day_unix(timezone_name)
+    mode_footer = (
+        "<footer>"
+        f"الوضع الحالي: <b>{streak_mode_label(streak_mode)}</b> · "
+        '<tg-button type="callback_data" style="link" '
+        f'data="streak_mode:open:{settings_token}">وضع الستريك</tg-button>'
+        "</footer>"
+        if settings_token
+        else ""
+    )
     return InputRichMessage(
         html=(
             "<h1>🔥 حالة الستريك</h1>"
@@ -69,7 +89,9 @@ def build_streak_rich_message(
             f"{breaks}"
             f"الحماية المتاحة: <b>{protection_text(freeze_count)}</b><br>"
             f"آخر يوم ناجح: <b>{last_day}</b>"
-            "</p></details>"
+            "</p>"
+            f"{mode_footer}"
+            "</details>"
             "<p>"
             "<tg-button type=\"disabled\">⏳ "
             f"<tg-time unix=\"{midnight_unix}\" format=\"r\">{remaining}</tg-time>"
@@ -89,6 +111,7 @@ def build_streak_fallback_text(
     freeze_count: int,
     last_completed_day: str | None,
     timezone_name: str | None = DEFAULT_TIMEZONE,
+    streak_mode: str = "message",
 ) -> str:
     lines = [
         "🔥 حالة الستريك",
@@ -103,6 +126,7 @@ def build_streak_fallback_text(
         [
             f"الحماية المتاحة: {protection_text(freeze_count)}",
             f"آخر يوم ناجح: {last_completed_day or 'لا يوجد'}",
+            f"وضع الستريك: {streak_mode_label(streak_mode)}",
             f"⏳ المتبقي لنهاية اليوم: {remaining_day_text(timezone_name)}",
         ]
     )
