@@ -277,12 +277,10 @@ class Repository:
                       ON active.owner_user_id=source.owner_user_id
                     WHERE source.business_connection_id=?
                       AND active.is_enabled=1
-                    ORDER BY
-                      CASE WHEN active.business_connection_id=? THEN 0 ELSE 1 END,
-                      active.updated_at DESC
+                    ORDER BY active.updated_at DESC
                     LIMIT 1
                     """,
-                    (connection_id, connection_id),
+                    (connection_id,),
                 )
             ).fetchone()
             return str(row["business_connection_id"]) if row else None
