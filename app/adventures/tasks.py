@@ -375,7 +375,7 @@ def choose_tasks(rng=None, count: int = TASKS_PER_SLOT) -> list[str]:
 
 def ensure_task_slot(state: dict, at: datetime, rng=None) -> bool:
     slot = task_slot(at)
-    if state.get("task_slot") == slot and len(state.get("tasks", ())) == TASKS_PER_SLOT:
+    if state.get("task_slot") == slot and state.get("tasks"):
         state.setdefault("slot_stats", empty_slot_stats())
         state.setdefault("done", [])
         state.setdefault("all_bonus", False)
