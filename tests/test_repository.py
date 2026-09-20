@@ -419,3 +419,47 @@ def test_reconnect_resolves_old_ids_to_latest_owner_connection(tmp_path):
         await database.close()
 
     asyncio.run(scenario())
+
+
+def test_reconnect_merges_old_chats_into_partially_used_new_connection(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "test.db")
+        await database.init()
+        repository = Repository(database)
+
+        await repository.upsert_connection("bc-old", 10, 10, True)
+        await repository.register_activity(
+            connection_id="bc-old",
+            chat_id=20,
+            message_id=1,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-18",
+            yesterday="2026-09-17",
+            choose_pose=lambda days, last: "pose",
+        )
+
+        # Simulate a reconnect where the new connection already received
+        # unrelated state before the Business connection event was handled.
+        await repository.upsert_connection("bc-new", 10, 10, False)
+        await repository.register_activity(
+            connection_id="bc-new",
+            chat_id=99,
+            message_id=2,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-18",
+            yesterday="2026-09-17",
+            choose_pose=lambda days, last: "pose",
+        )
+
+        await repository.upsert_connection("bc-new", 10, 10, True)
+
+        assert await repository.get_streak("bc-old", 20) is None
+        assert await repository.get_streak("bc-new", 20) is not None
+        assert await repository.get_streak("bc-new", 99) is not None
+        assert await repository.resolve_active_connection_id("bc-old") == "bc-new"
+
+        await database.close()
+
+    asyncio.run(scenario())
