@@ -49,6 +49,7 @@ def build_streak_rich_message(
     freeze_count: int,
     last_completed_day: str | None,
     timezone_name: str | None = DEFAULT_TIMEZONE,
+    chat_id: int | None = None,
 ) -> InputRichMessage:
     last_day = last_completed_day or "لا يوجد"
     breaks = (
@@ -69,7 +70,14 @@ def build_streak_rich_message(
             f"{breaks}"
             f"الحماية المتاحة: <b>{protection_text(freeze_count)}</b><br>"
             f"آخر يوم ناجح: <b>{last_day}</b>"
-            "</p></details>"
+            "</p>"
+            + (
+                "<footer><tg-button callback_data=\\\"streak_mode:menu:"
+                f"{chat_id}\\\">⚙️ وضع الستريك</tg-button></footer>"
+                if chat_id is not None
+                else ""
+            )
+            + "</details>"
             "<p>"
             "<tg-button type=\"disabled\">⏳ "
             f"<tg-time unix=\"{midnight_unix}\" format=\"r\">{remaining}</tg-time>"
