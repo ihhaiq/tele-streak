@@ -167,3 +167,45 @@ def test_mode_change_is_scoped_to_one_business_connection(tmp_path):
         await database.close()
 
     asyncio.run(scenario())
+
+
+def test_mode_change_keeps_already_completed_day(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "streak.db")
+        await database.init()
+        repository = Repository(database)
+        await repository.upsert_connection("bc-1", 10, None, True)
+
+        await repository.register_activity(
+            connection_id="bc-1",
+            chat_id=20,
+            message_id=1,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-20",
+            yesterday="2026-09-19",
+            choose_pose=lambda days, last: "pose",
+        )
+        completed = await repository.register_activity(
+            connection_id="bc-1",
+            chat_id=20,
+            message_id=2,
+            peer_user_id=30,
+            role="peer",
+            today="2026-09-20",
+            yesterday="2026-09-19",
+            choose_pose=lambda days, last: "pose",
+        )
+        assert completed.completed
+
+        changed = await repository.set_streak_mode(
+            10, "bc-1", 20, MODE_PHOTO_VIDEO, "2026-09-20"
+        )
+        assert changed is not None
+        assert changed.streak_mode == MODE_PHOTO_VIDEO
+        assert changed.last_completed_day == "2026-09-20"
+        assert changed.owner_sent_day == "2026-09-20"
+        assert changed.peer_sent_day == "2026-09-20"
+        await database.close()
+
+    asyncio.run(scenario())
