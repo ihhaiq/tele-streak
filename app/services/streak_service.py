@@ -188,25 +188,24 @@ class StreakService:
                 mode = record.streak_mode if record is not None else "message"
                 if not matches_streak_mode(message, mode):
                     completion = Completion(False)
-                    self._release_lock(key)
-                    return completion
-                today, yesterday = await self._days(connection_id)
-                result = await self.repository.register_activity(
-                    connection_id=connection_id,
-                    chat_id=message.chat.id,
-                    message_id=message.message_id,
-                    peer_user_id=None,
-                    role="owner",
-                    today=today,
-                    yesterday=yesterday,
-                    choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
-                )
-                completion = Completion(
-                    completed=result.completed,
-                    days=result.days,
-                    pose=result.pose_id,
-                    duplicate=result.duplicate,
-                )
+                else:
+                    today, yesterday = await self._days(connection_id)
+                    result = await self.repository.register_activity(
+                        connection_id=connection_id,
+                        chat_id=message.chat.id,
+                        message_id=message.message_id,
+                        peer_user_id=None,
+                        role="owner",
+                        today=today,
+                        yesterday=yesterday,
+                        choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
+                    )
+                    completion = Completion(
+                        completed=result.completed,
+                        days=result.days,
+                        pose=result.pose_id,
+                        duplicate=result.duplicate,
+                    )
         self._release_lock(key)
         return completion
 
