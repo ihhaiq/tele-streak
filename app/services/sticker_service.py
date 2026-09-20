@@ -19,6 +19,7 @@ from app.keyboards.streak import revive_streak_keyboard, streak_keyboard
 from app.services.rich_status import build_streak_fallback_text, build_streak_rich_message
 from app.services.streak_messages import BROKEN_NOTICE_TEXT, build_broken_notice_rich_message
 from app.services.sticker_pack import StickerPack
+from app.streak_modes import MODE_MESSAGE
 
 logger = logging.getLogger(__name__)
 MAX_SEND_ATTEMPTS = 3
@@ -112,7 +113,7 @@ class StickerService:
         break_count: int,
         freeze_count: int,
         last_completed_day: str | None,
-        streak_mode: str = "message",
+        streak_mode: str = MODE_MESSAGE,
         timezone_name: str | None = None,
     ) -> None:
         rich_message = build_streak_rich_message(
