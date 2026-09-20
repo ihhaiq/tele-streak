@@ -289,9 +289,9 @@ def _build_catalog() -> dict[str, TaskSpec]:
     for index, target in enumerate(gap_targets):
         minutes = target // 60
         label = (
-            f"تشاركون خلال {target} ثانية"
+            f"تردون على بعض خلال {target} ثانية"
             if target < 60
-            else f"تشاركون بفارق {minutes} دقيقة أو أقل"
+            else f"تردون على بعض خلال {minutes} دقيقة أو أقل"
         )
         add(
             f"gap_{target}",
@@ -344,6 +344,8 @@ def empty_slot_stats() -> dict[str, Any]:
         "owner": role(),
         "peer": role(),
         "first": {},
+        "last": {},
+        "best_gap": None,
     }
 
 
@@ -397,9 +399,18 @@ def record_task_activity(state: dict, activity) -> None:
     if kind is not None:
         role[kind] += 1
 
+    timestamp = activity.at.timestamp()
     first = stats["first"]
     if activity.role not in first:
-        first[activity.role] = activity.at.timestamp()
+        first[activity.role] = timestamp
+
+    other_role = "peer" if activity.role == "owner" else "owner"
+    last = stats["last"]
+    if other_role in last:
+        gap = abs(timestamp - float(last[other_role]))
+        current = stats.get("best_gap")
+        stats["best_gap"] = gap if current is None else min(float(current), gap)
+    last[activity.role] = timestamp
 
 
 def _count(role_stats: dict[str, Any], kind: str) -> int:
@@ -452,10 +463,8 @@ def is_task_done(spec: TaskSpec, state: dict) -> bool:
             return False
         return min(first, key=first.get) == spec.role
     if spec.rule == "first_gap":
-        return (
-            len(first) == 2
-            and abs(float(first["owner"]) - float(first["peer"])) <= spec.target
-        )
+        best_gap = stats.get("best_gap")
+        return best_gap is not None and float(best_gap) <= spec.target
     if spec.rule == "split_messages":
         return (
             int(owner["messages"]) >= spec.target
