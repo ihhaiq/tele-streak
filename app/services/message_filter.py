@@ -35,3 +35,19 @@ def should_count(message: Message) -> bool:
             message.contact,
         )
     )
+
+
+STREAK_MODE_LABELS = {
+    "message": "رسالة",
+    "photo_video": "صورة / فيديو",
+    "voice": "بصمة صوتية",
+}
+
+
+def matches_streak_mode(message: Message, mode: str) -> bool:
+    """Return whether a countable message satisfies the chat's streak mode."""
+    if mode == "photo_video":
+        return bool(message.photo or message.video)
+    if mode == "voice":
+        return message.voice is not None
+    return True
