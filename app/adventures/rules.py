@@ -111,6 +111,7 @@ def apply_activity(
     freeze_count: int,
 ) -> tuple[list[str], bool]:
     day = activity.at.date().isoformat()
+    ensure_task_slot(state, activity.at)
     role = activity.role
     stats = profile.stats[role]
     stats["name"] = activity.name[:80] or stats["name"]
