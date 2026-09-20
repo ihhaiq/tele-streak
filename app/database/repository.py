@@ -363,10 +363,19 @@ class Repository:
             cursor = await db.execute(
                 """
                 UPDATE streaks
-                SET streak_mode=?, updated_at=?
+                SET owner_sent_day=CASE
+                        WHEN streak_mode<>? THEN NULL
+                        ELSE owner_sent_day
+                    END,
+                    peer_sent_day=CASE
+                        WHEN streak_mode<>? THEN NULL
+                        ELSE peer_sent_day
+                    END,
+                    streak_mode=?,
+                    updated_at=?
                 WHERE settings_token=? AND is_enabled=1
                 """,
-                (mode, self._now(), token),
+                (mode, mode, mode, self._now(), token),
             )
             await db.commit()
             return cursor.rowcount == 1
