@@ -52,6 +52,7 @@ def build_router(
             return
 
         token = (callback.data or "").split(":", 1)[-1]
+        await callback.answer("جاري نشر الستوري 🚀")
         result = await adventures.publish_story(token, callback.from_user.id)
 
         if result.status == "published":
@@ -72,7 +73,6 @@ def build_router(
                         caption=final_text,
                         reply_markup=None,
                     )
-            await callback.answer(final_text, show_alert=True)
             return
 
         messages = {
@@ -84,10 +84,14 @@ def build_router(
             ),
             "failed": "Telegram رفض نشر الستوري أو صار خطأ. جرب مرة ثانية.",
         }
-        await callback.answer(
-            messages.get(result.status, "تعذر نشر الستوري."),
-            show_alert=True,
-        )
+        error_text = messages.get(result.status, "تعذر نشر الستوري.")
+        if isinstance(callback.message, Message):
+            with suppress(TelegramBadRequest):
+                await bot.send_message(
+                    chat_id=callback.message.chat.id,
+                    business_connection_id=callback.message.business_connection_id,
+                    text=error_text,
+                )
 
     @router.callback_query(F.data.startswith("streak_revive:approve:"))
     async def approve_revive(callback: CallbackQuery, bot: Bot) -> None:
