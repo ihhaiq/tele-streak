@@ -41,6 +41,7 @@ class GuestDeliveryService:
         chat_id: int,
         reply_to_message_id: int | None = None,
         ttl_seconds: int = 60,
+        payload: str | None = None,
     ) -> bool:
         username, supported = await self._identity()
         if not supported or not username:
@@ -71,7 +72,10 @@ class GuestDeliveryService:
             summon = await self.bot.send_message(
                 chat_id=chat_id,
                 business_connection_id=connection_id,
-                text=f"@{username} streak:{event}:{token}",
+                text=(
+                    f"@{username} streak:{event}:{token}"
+                    + (f":{payload}" if payload else "")
+                ),
                 disable_notification=True,
                 reply_parameters=(
                     ReplyParameters(message_id=reply_to_message_id)
