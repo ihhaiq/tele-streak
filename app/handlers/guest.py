@@ -201,6 +201,7 @@ def build_router(
                     freeze_count=streak.freeze_count,
                     last_completed_day=streak.last_completed_day,
                     timezone_name=timezone_name,
+                    chat_id=request.chat_id,
                 )
                 result = InlineQueryResultArticle(
                     id=f"streak-{token}",
