@@ -1,10 +1,12 @@
 import asyncio
 from types import SimpleNamespace
 
+from app.database.activation_repository import StreakActivationRepository
 from app.database.engine import Database
 from app.database.repository import Repository
 from app.services.message_filter import matches_streak_mode
 from app.services.rich_status import build_streak_rich_message
+from app.services.streak_service import StreakService
 
 
 def test_rich_mode_button_is_in_footer_inside_details():
@@ -76,6 +78,61 @@ def test_streak_mode_is_persisted_and_authorized(tmp_path):
         assert streak is not None
         assert streak.streak_mode == "media"
         assert streak.settings_token == token
+
+        await database.close()
+
+    asyncio.run(scenario())
+
+
+class _FakePoses:
+    def choose(self, days, last_pose):
+        return SimpleNamespace(id=f"pose-{days}")
+
+
+def _message(connection_id, chat_id, sender_id, message_id, *, photo=None, video=None, voice=None):
+    return SimpleNamespace(
+        business_connection_id=connection_id,
+        chat=SimpleNamespace(id=chat_id),
+        from_user=SimpleNamespace(id=sender_id),
+        message_id=message_id,
+        photo=photo,
+        video=video,
+        voice=voice,
+    )
+
+
+def test_media_mode_ignores_text_and_waits_for_media(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "test.db")
+        await database.init()
+        repository = Repository(database)
+        activations = StreakActivationRepository(database)
+        await repository.upsert_connection("bc-media", 10, None, True)
+        service = StreakService(
+            repository,
+            activations,
+            "Asia/Baghdad",
+            _FakePoses(),
+        )
+
+        await service.start_by_owner(_message("bc-media", 20, 10, 1))
+        token = await repository.ensure_streak_settings_token("bc-media", 20)
+        assert token
+        assert await repository.set_streak_mode(token, "media")
+
+        ignored = await service.register_message(
+            _message("bc-media", 20, 30, 2)
+        )
+        assert not ignored.completed
+        record = await repository.get_streak("bc-media", 20)
+        assert record is not None
+        assert record.peer_sent_day is None
+
+        completed = await service.register_message(
+            _message("bc-media", 20, 30, 3, photo=[object()])
+        )
+        assert completed.completed
+        assert completed.days == 1
 
         await database.close()
 
