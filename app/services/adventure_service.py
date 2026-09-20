@@ -433,4 +433,8 @@ class AdventureService:
             return StoryPublishResult("failed")
 
         await self.data.complete_story_publish(token, story_id)
+        await asyncio.to_thread(
+            self._unlink_paths,
+            [request.media_path, request.thumbnail_path],
+        )
         return StoryPublishResult("published", story_id)
