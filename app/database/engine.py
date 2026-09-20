@@ -151,10 +151,6 @@ ON streaks(chat_id);
 CREATE INDEX IF NOT EXISTS idx_streaks_last_completed
 ON streaks(last_completed_day);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_streaks_settings_token
-ON streaks(settings_token)
-WHERE settings_token IS NOT NULL;
-
 CREATE INDEX IF NOT EXISTS idx_processed_messages_time
 ON processed_messages(processed_at);
 """
