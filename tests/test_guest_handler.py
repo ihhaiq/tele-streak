@@ -13,10 +13,18 @@ def test_guest_event_parser_accepts_supported_events():
     ):
         assert extract_streak_guest_request(
             f"@HStreakBot streak:{event}:{token}"
-        ) == (event, token)
+        ) == (event, token, None)
 
 
 def test_guest_event_parser_rejects_unknown_or_short_tokens():
     assert extract_streak_guest_request("@HStreakBot streak:unknown:AbCd_123") is None
     assert extract_streak_guest_request("@HStreakBot streak:revive:short") is None
     assert extract_streak_guest_request(None) is None
+
+
+def test_guest_event_parser_accepts_story_preview_payload():
+    token = "AbCd_123"
+    payload = "Story_1234"
+    assert extract_streak_guest_request(
+        f"@HStreakBot streak:story_preview:{token}:{payload}"
+    ) == ("story_preview", token, payload)
