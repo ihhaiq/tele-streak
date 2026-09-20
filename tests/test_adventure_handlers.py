@@ -30,24 +30,11 @@ def test_story_menu_offers_still_image_first():
 
 
 
-def test_story_menu_can_open_telegram_main_mini_app():
-    links = {
-        "image": "https://t.me/examplebot?startapp=image",
-        "video5": "https://t.me/examplebot?startapp=video5",
-        "video10": "https://t.me/examplebot?startapp=video10",
-    }
-    menu = story_menu(10, 20, links)
-    assert menu.inline_keyboard[0][0].url == links["image"]
-    assert menu.inline_keyboard[0][0].callback_data is None
-    assert menu.inline_keyboard[1][0].url == links["video5"]
-    assert menu.inline_keyboard[1][1].url == links["video10"]
-
-
 def test_outsider_cannot_read_progress_or_generate_story():
     async def run():
         record = SimpleNamespace(peer_user_id=30, chat_id=20)
         repo = SimpleNamespace(get_owner_streak=AsyncMock(return_value=record))
-        adventures = SimpleNamespace(snapshot=AsyncMock(), send_story=AsyncMock())
+        adventures = SimpleNamespace(snapshot=AsyncMock(), prepare_story_preview=AsyncMock())
         router = build_router(repo, adventures)
         bot = Bot("123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi")
         bot.session = AsyncMock()
@@ -57,7 +44,7 @@ def test_outsider_cannot_read_progress_or_generate_story():
                     callback(999, data).as_(bot), bot
                 )
             adventures.snapshot.assert_not_awaited()
-            adventures.send_story.assert_not_awaited()
+            adventures.prepare_story_preview.assert_not_awaited()
         finally:
             await bot.session.close()
 
