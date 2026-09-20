@@ -174,3 +174,26 @@ an original instrumental celebration melody is included by default.
 
 See [the implementation and operations guide](docs/ADVENTURES.md) for the data
 model, reward rules, migration behavior, testing, and deployment checks.
+
+
+### Native Telegram story editor
+
+When a public HTTPS domain and Telegram Main Mini App are configured, the story
+format buttons open Telegram's native story editor instead of only sending the
+generated file into the Business chat. The user still reviews the story and
+presses Publish; the bot never posts a personal story without that final action.
+
+Deployment:
+
+1. Give the Railway service a public domain. The bot automatically uses
+   `RAILWAY_PUBLIC_DOMAIN`, or set `PUBLIC_BASE_URL=https://your-domain`.
+2. In @BotFather open **Bot Settings > Configure Mini App > Enable Mini App**
+   and set the Main Mini App URL to `https://your-domain/story/app`.
+3. Restart the bot after enabling the Main Mini App so `getMe` reports
+   `has_main_web_app=true`.
+
+Story links are signed, expire after `STORY_SHARE_TTL_SECONDS` (15 minutes by
+default), and the backend validates Telegram Mini App init data plus the opening
+user. Only the two streak participants can prepare the media. Generated share
+files are temporary and are deleted after expiry. If the Main Mini App is not
+configured, the previous send-photo/send-video flow remains available.

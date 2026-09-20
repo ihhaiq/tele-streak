@@ -21,20 +21,34 @@ from app.services.rich_status import (
 logger = logging.getLogger(__name__)
 
 
-def story_menu(owner, chat):
+def story_menu(owner, chat, links: dict[str, str] | None = None):
+    links = links or {}
+
+    def story_button(text: str, kind: str, fallback: str) -> InlineKeyboardButton:
+        url = links.get(kind)
+        if url:
+            return InlineKeyboardButton(text=text, url=url)
+        return InlineKeyboardButton(text=text, callback_data=fallback)
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="صورة ستوري 🖼️", callback_data=f"adv:image:{owner}:{chat}"
+                story_button(
+                    "صورة ستوري 🖼️",
+                    "image",
+                    f"adv:image:{owner}:{chat}",
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text="٥ ثواني 🎬", callback_data=f"adv:video5:{owner}:{chat}"
+                story_button(
+                    "٥ ثواني 🎬",
+                    "video5",
+                    f"adv:video5:{owner}:{chat}",
                 ),
-                InlineKeyboardButton(
-                    text="١٠ ثواني 🎬", callback_data=f"adv:video10:{owner}:{chat}"
+                story_button(
+                    "١٠ ثواني 🎬",
+                    "video10",
+                    f"adv:video10:{owner}:{chat}",
                 ),
             ],
             [
@@ -69,7 +83,7 @@ async def edit_page(callback, bot, rich, text, keyboard):
     return True
 
 
-def build_router(repository, adventures) -> Router:
+def build_router(repository, adventures, story_web=None) -> Router:
     router = Router(name="adventures")
 
     @router.callback_query(F.data.startswith("adv:"))
@@ -123,6 +137,7 @@ def build_router(repository, adventures) -> Router:
                     text=error,
                 )
             return
+
         profile, state = await adventures.snapshot(record.business_connection_id, chat)
         if action == "status":
             values = dict(
@@ -144,12 +159,36 @@ def build_router(repository, adventures) -> Router:
             text = build_streak_fallback_text(**values)
             keyboard = navigation(owner, chat)
         elif action == "story":
-            text = "🎬 مشاركة ستوري\nاختار صورة ستوري مباشرة، أو فيديو ٥/١٠ ثواني. Jake يلعب بكرتين بيهن صوركم وأسماءكم."
-            rich = InputRichMessage(
-                html="<h1>🎬 مشاركة ستوري</h1><p>اختار صورة ستوري مباشرة، أو فيديو ٥/١٠ ثواني. Jake يلعب بكرتين بيهن صوركم وأسماءكم.</p>",
-                is_rtl=True,
-            )
-            keyboard = story_menu(owner, chat)
+            links = story_web.links(owner, chat) if story_web is not None else {}
+            if links:
+                text = (
+                    "🎬 مشاركة ستوري\n"
+                    "اختار صورة أو فيديو، وTelegram راح يفتح لوحة الستوري الأصلية "
+                    "والمحتوى جاهز حتى تراجعه وتنشره."
+                )
+                rich = InputRichMessage(
+                    html=(
+                        "<h1>🎬 مشاركة ستوري</h1>"
+                        "<p>اختار صورة أو فيديو، وTelegram راح يفتح لوحة الستوري "
+                        "الأصلية والمحتوى جاهز حتى تراجعه وتنشره.</p>"
+                    ),
+                    is_rtl=True,
+                )
+            else:
+                text = (
+                    "🎬 مشاركة ستوري\n"
+                    "اختار صورة ستوري مباشرة، أو فيديو ٥/١٠ ثواني. "
+                    "Jake يلعب بكرتين بيهن صوركم وأسماءكم."
+                )
+                rich = InputRichMessage(
+                    html=(
+                        "<h1>🎬 مشاركة ستوري</h1>"
+                        "<p>اختار صورة ستوري مباشرة، أو فيديو ٥/١٠ ثواني. "
+                        "Jake يلعب بكرتين بيهن صوركم وأسماءكم.</p>"
+                    ),
+                    is_rtl=True,
+                )
+            keyboard = story_menu(owner, chat, links)
         else:
             text = page_text(profile, state, action)
             rich = rich_page(profile, state, action, owner, chat)

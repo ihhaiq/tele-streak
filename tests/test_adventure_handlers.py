@@ -29,6 +29,20 @@ def test_story_menu_offers_still_image_first():
     assert "صورة ستوري" in menu.inline_keyboard[0][0].text
 
 
+
+def test_story_menu_can_open_telegram_main_mini_app():
+    links = {
+        "image": "https://t.me/examplebot?startapp=image",
+        "video5": "https://t.me/examplebot?startapp=video5",
+        "video10": "https://t.me/examplebot?startapp=video10",
+    }
+    menu = story_menu(10, 20, links)
+    assert menu.inline_keyboard[0][0].url == links["image"]
+    assert menu.inline_keyboard[0][0].callback_data is None
+    assert menu.inline_keyboard[1][0].url == links["video5"]
+    assert menu.inline_keyboard[1][1].url == links["video10"]
+
+
 def test_outsider_cannot_read_progress_or_generate_story():
     async def run():
         record = SimpleNamespace(peer_user_id=30, chat_id=20)
