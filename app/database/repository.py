@@ -29,6 +29,8 @@ class StreakRecord:
     freeze_count: int
     auto_freeze: bool
     freezes_used: int
+    streak_mode: str
+    settings_token: str | None
     created_at: str
     updated_at: str
 
@@ -54,6 +56,22 @@ class GuestStreakRequest:
     business_connection_id: str
     chat_id: int
     summon_message_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class StreakSettingsTarget:
+    token: str
+    business_connection_id: str
+    chat_id: int
+    owner_user_id: int
+    peer_user_id: int | None
+    mode: str
+
+    def allows(self, user_id: int) -> bool:
+        return user_id == self.owner_user_id or user_id == self.peer_user_id
+
+
+STREAK_MODES = frozenset({"message", "media", "voice"})
 
 
 class Repository:
@@ -94,6 +112,12 @@ class Repository:
             freeze_count=int(row["freeze_count"]),
             auto_freeze=bool(row["auto_freeze"]),
             freezes_used=int(row["freezes_used"]),
+            streak_mode=str(row["streak_mode"]),
+            settings_token=(
+                str(row["settings_token"])
+                if row["settings_token"] is not None
+                else None
+            ),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
         )
@@ -261,6 +285,91 @@ class Repository:
             )
             row = await cursor.fetchone()
             return self._streak_from_row(row) if row else None
+
+    async def ensure_streak_settings_token(
+        self,
+        connection_id: str,
+        chat_id: int,
+    ) -> str | None:
+        async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                """
+                SELECT settings_token
+                FROM streaks
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (connection_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                await db.rollback()
+                return None
+
+            current = row["settings_token"]
+            if current:
+                await db.commit()
+                return str(current)
+
+            token = secrets.token_urlsafe(9)
+            await db.execute(
+                """
+                UPDATE streaks
+                SET settings_token=?, updated_at=?
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (token, self._now(), connection_id, chat_id),
+            )
+            await db.commit()
+            return token
+
+    async def get_streak_settings(
+        self,
+        token: str,
+    ) -> StreakSettingsTarget | None:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT s.business_connection_id, s.chat_id, s.peer_user_id,
+                       s.streak_mode, s.settings_token, b.owner_user_id
+                FROM streaks AS s
+                JOIN business_connections AS b
+                  ON b.business_connection_id=s.business_connection_id
+                WHERE s.settings_token=? AND b.is_enabled=1
+                LIMIT 1
+                """,
+                (token,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return None
+            return StreakSettingsTarget(
+                token=str(row["settings_token"]),
+                business_connection_id=str(row["business_connection_id"]),
+                chat_id=int(row["chat_id"]),
+                owner_user_id=int(row["owner_user_id"]),
+                peer_user_id=(
+                    int(row["peer_user_id"])
+                    if row["peer_user_id"] is not None
+                    else None
+                ),
+                mode=str(row["streak_mode"]),
+            )
+
+    async def set_streak_mode(self, token: str, mode: str) -> bool:
+        if mode not in STREAK_MODES:
+            raise ValueError("unknown streak mode")
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                UPDATE streaks
+                SET streak_mode=?, updated_at=?
+                WHERE settings_token=? AND is_enabled=1
+                """,
+                (mode, self._now(), token),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
 
     async def add_streak_days(
         self,
