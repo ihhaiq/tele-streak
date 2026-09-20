@@ -42,6 +42,26 @@ def test_built_in_music_is_audible_and_exact_duration(tmp_path):
 
 
 @pytest.mark.skipif(
+    not features.check_feature("raqm"),
+    reason="Arabic shaping is required for the still story",
+)
+def test_static_story_is_shareable_portrait_png(tmp_path):
+    avatar = tmp_path / "profile.jpg"
+    Image.new("RGB", (300, 240), "#41bca9").save(avatar)
+    output = StoryRenderer().render_image(
+        tmp_path,
+        days=77,
+        names=("حسين", "صديق"),
+        photos=(avatar, None),
+    )
+    with Image.open(output) as image:
+        assert image.format == "PNG"
+        assert image.size == (720, 1280)
+        assert image.getbbox() is not None
+    assert output.stat().st_size < 5_000_000
+
+
+@pytest.mark.skipif(
     not shutil.which("ffmpeg")
     or not shutil.which("ffprobe")
     or not features.check_feature("raqm"),
