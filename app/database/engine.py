@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS streaks (
     freezes_used INTEGER NOT NULL DEFAULT 0,
     revivable_streak INTEGER NOT NULL DEFAULT 0,
     revivable_day TEXT,
+    streak_mode TEXT NOT NULL DEFAULT 'message',
+    settings_token TEXT,
     freeze_seed_version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -149,6 +151,10 @@ ON streaks(chat_id);
 CREATE INDEX IF NOT EXISTS idx_streaks_last_completed
 ON streaks(last_completed_day);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_streaks_settings_token
+ON streaks(settings_token)
+WHERE settings_token IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_processed_messages_time
 ON processed_messages(processed_at);
 """
@@ -180,7 +186,13 @@ MIGRATIONS = (
     "ALTER TABLE streaks ADD COLUMN freezes_used INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN revivable_streak INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN revivable_day TEXT",
+    "ALTER TABLE streaks ADD COLUMN streak_mode TEXT NOT NULL DEFAULT 'message'",
+    "ALTER TABLE streaks ADD COLUMN settings_token TEXT",
     "ALTER TABLE streaks ADD COLUMN freeze_seed_version INTEGER NOT NULL DEFAULT 0",
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_streaks_settings_token "
+        "ON streaks(settings_token) WHERE settings_token IS NOT NULL"
+    ),
     (
         "UPDATE streaks SET "
         "freeze_count=CASE WHEN freeze_count < 3 THEN 3 ELSE freeze_count END, "
