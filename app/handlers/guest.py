@@ -200,6 +200,8 @@ def build_router(
                     break_count=streak.break_count,
                     freeze_count=streak.freeze_count,
                     last_completed_day=streak.last_completed_day,
+                    chat_id=streak.chat_id,
+                    streak_mode=streak.streak_mode,
                     timezone_name=timezone_name,
                 )
                 result = InlineQueryResultArticle(
@@ -359,6 +361,7 @@ def build_router(
                             break_count=streak.break_count,
                             freeze_count=streak.freeze_count,
                             last_completed_day=streak.last_completed_day,
+                            streak_mode=streak.streak_mode,
                             timezone_name=timezone_name,
                         ),
                     ),
