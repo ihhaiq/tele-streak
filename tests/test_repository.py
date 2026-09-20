@@ -356,3 +356,66 @@ def test_manual_add_streak_days_updates_current_longest_and_total(tmp_path):
         await database.close()
 
     asyncio.run(scenario())
+
+
+def test_reconnect_resolves_old_ids_to_latest_owner_connection(tmp_path):
+    async def scenario():
+        database = Database(tmp_path / "test.db")
+        await database.init()
+        repository = Repository(database)
+
+        await repository.upsert_connection("bc-old", 10, 10, True)
+        assert await repository.set_owner_timezone(10, "UTC") == 1
+
+        await repository.register_activity(
+            connection_id="bc-old",
+            chat_id=20,
+            message_id=1,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-18",
+            yesterday="2026-09-17",
+            choose_pose=lambda days, last: "pose",
+        )
+        await repository.register_activity(
+            connection_id="bc-old",
+            chat_id=20,
+            message_id=2,
+            peer_user_id=30,
+            role="peer",
+            today="2026-09-18",
+            yesterday="2026-09-17",
+            choose_pose=lambda days, last: "pose",
+        )
+
+        await repository.upsert_connection("bc-old", 10, 10, False)
+        await repository.upsert_connection("bc-new", 10, 10, True)
+
+        assert await repository.resolve_active_connection_id("bc-old") == "bc-new"
+        assert await repository.resolve_active_connection_id("bc-new") == "bc-new"
+        assert await repository.get_connection_timezone("bc-new") == "UTC"
+        first = await repository.get_streak("bc-new", 20)
+        assert first is not None and first.current_streak == 1
+
+        await repository.upsert_connection("bc-new", 10, 10, False)
+        await repository.upsert_connection("bc-newer", 10, 10, True)
+
+        assert await repository.resolve_active_connection_id("bc-old") == "bc-newer"
+        assert await repository.resolve_active_connection_id("bc-new") == "bc-newer"
+        assert await repository.resolve_active_connection_id("bc-newer") == "bc-newer"
+        assert await repository.get_connection_timezone("bc-newer") == "UTC"
+
+        restored = await repository.get_streak("bc-newer", 20)
+        assert restored is not None
+        assert restored.current_streak == 1
+        assert restored.longest_streak == 1
+        assert restored.peer_user_id == 30
+        assert await repository.get_streak("bc-old", 20) is None
+        assert await repository.get_streak("bc-new", 20) is None
+
+        stats = await repository.stats()
+        assert stats[0] == 1
+
+        await database.close()
+
+    asyncio.run(scenario())
