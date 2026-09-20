@@ -7,9 +7,13 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import EditMessageText
 from aiogram.types import CallbackQuery, Chat, InputRichMessage, Message, User
 
+from app.adventures.rules import Profile
+from app.adventures.views import rich_buttons, rich_page, rich_story_page
 from app.handlers.adventures import build_router, edit_page, story_menu
 from app.handlers.business import build_router as business_router
+from app.handlers.streak_mode import build_mode_menu
 from app.services.adventure_service import AdventureService
+from app.services.rich_status import build_streak_rich_message
 from app.services.streak_service import Completion
 
 
@@ -26,7 +30,7 @@ def callback(user_id=10, data="adv:tasks:10:20"):
 def test_story_menu_offers_still_image_first():
     menu = story_menu(10, 20)
     assert menu.inline_keyboard[0][0].callback_data == "adv:image:10:20"
-    assert "صورة ستوري" in menu.inline_keyboard[0][0].text
+    assert menu.inline_keyboard[0][0].text == "صورة"
 
 
 
@@ -153,3 +157,101 @@ def test_sticker_page_requests_new_message_when_text_edit_is_impossible():
         assert result is False
 
     asyncio.run(run())
+
+
+def test_rich_navigation_uses_one_bullet_per_button():
+    html = rich_buttons(10, 20, include_mode=True)
+    assert html.startswith("<ul>")
+    assert html.count("<li>") == 5
+    assert html.count("</li>") == 5
+    assert html.count("<tg-button") == 5
+    assert "streak_mode:open:10:20" in html
+    assert "adv:compare:10:20" in html
+
+
+def test_status_details_use_rich_list_without_duplicate_inline_markup():
+    rich = build_streak_rich_message(
+        current=12,
+        longest=20,
+        completed_days=30,
+        break_count=0,
+        freeze_count=3,
+        last_completed_day="2026-09-20",
+        owner_user_id=10,
+        chat_id=20,
+        adventure_profile=Profile(),
+    )
+    assert "<h3>الخيارات</h3><ul>" in rich.html
+    assert "<b>12 يوم</b> حاليًا" in rich.html
+    assert "إجمالي أيام الستريك" not in rich.html
+    assert rich.html.count("<li>") >= 5
+
+
+def test_compare_page_is_split_into_readable_sections():
+    profile = Profile(tracked_since="2026-09-01", automatic_saves=2)
+    profile.stats["owner"].update(
+        name="حسين",
+        started=4,
+        late=1,
+        days=7,
+        saves=2,
+        contribution=60,
+    )
+    profile.stats["peer"].update(
+        name="صديق",
+        started=3,
+        late=2,
+        days=7,
+        saves=2,
+        contribution=40,
+    )
+    rich = rich_page(profile, {}, "compare", 10, 20)
+    assert "<h1>مقارنة ودية</h1>" in rich.html
+    assert "<h3>حسين</h3>" in rich.html
+    assert "<h3>صديق</h3>" in rich.html
+    assert "<details><summary>الحساب</summary>" in rich.html
+    assert "<details><summary>الخيارات</summary>" in rich.html
+    assert "إنتوا فريق واحد" not in rich.html
+    assert rich.html.count("<li>") >= 10
+
+
+def test_story_page_keeps_choices_as_rich_buttons():
+    rich = rich_story_page(10, 20)
+    assert "adv:image:10:20" in rich.html
+    assert "adv:video5:10:20" in rich.html
+    assert "adv:video10:10:20" in rich.html
+    assert rich.html.count("<li>") >= 8
+    assert "النشر يتم بعد تأكيدك" in rich.html
+
+
+def test_successful_rich_edit_removes_existing_inline_keyboard():
+    async def run():
+        bot = SimpleNamespace(edit_message_text=AsyncMock())
+        await edit_page(
+            callback(),
+            bot,
+            InputRichMessage(html="<p>test</p>"),
+            "fallback",
+            "fallback-keyboard",
+        )
+        call = bot.edit_message_text.await_args
+        assert call.kwargs["rich_message"].html == "<p>test</p>"
+        assert call.kwargs["reply_markup"] is None
+
+    asyncio.run(run())
+
+
+def test_mode_menu_uses_one_button_per_line():
+    rich = build_mode_menu(10, 20, "message")
+    assert "<h1>وضع الستريك</h1>" in rich.html
+    assert "<tg-button-row" not in rich.html
+    assert rich.html.count("<li>") == 4
+    assert "الحالي: <b>رسالة</b>" in rich.html
+
+
+def test_fallback_navigation_is_one_button_per_row():
+    from app.adventures.views import navigation
+
+    keyboard = navigation(10, 20)
+    assert len(keyboard.inline_keyboard) == 5
+    assert all(len(row) == 1 for row in keyboard.inline_keyboard)
