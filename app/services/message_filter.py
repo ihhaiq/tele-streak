@@ -42,4 +42,4 @@ def matches_streak_mode(message: Message, mode: str) -> bool:
         return bool(getattr(message, "photo", None) or getattr(message, "video", None))
     if mode == "voice":
         return bool(getattr(message, "voice", None))
-    return should_count(message)
+    return True
