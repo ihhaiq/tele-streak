@@ -159,12 +159,13 @@ def test_sticker_page_requests_new_message_when_text_edit_is_impossible():
     asyncio.run(run())
 
 
-def test_rich_navigation_uses_one_bullet_per_button():
+def test_rich_navigation_uses_compact_borderless_table():
     html = rich_buttons(10, 20, include_mode=True)
-    assert html.startswith("<ul>")
-    assert html.count("<li>") == 5
-    assert html.count("</li>") == 5
+    assert html.startswith("<table compact>")
+    assert "bordered" not in html
+    assert "striped" not in html
     assert html.count("<tg-button") == 5
+    assert html.count("<tr>") == 3
     assert "streak_mode:open:10:20" in html
     assert "adv:compare:10:20" in html
 
@@ -181,13 +182,13 @@ def test_status_details_use_rich_list_without_duplicate_inline_markup():
         chat_id=20,
         adventure_profile=Profile(),
     )
-    assert "<h3>الخيارات</h3><ul>" in rich.html
+    assert "<h3>الخيارات</h3><table compact>" in rich.html
     assert "<b>12 يوم</b> حاليًا" in rich.html
     assert "إجمالي أيام الستريك" not in rich.html
     assert rich.html.count("<li>") >= 5
 
 
-def test_compare_page_is_split_into_readable_sections():
+def test_compare_page_uses_two_column_compact_table():
     profile = Profile(tracked_since="2026-09-01", automatic_saves=2)
     profile.stats["owner"].update(
         name="حسين",
@@ -206,13 +207,14 @@ def test_compare_page_is_split_into_readable_sections():
         contribution=40,
     )
     rich = rich_page(profile, {}, "compare", 10, 20)
-    assert "<h1>مقارنة ودية</h1>" in rich.html
-    assert "<h3>حسين</h3>" in rich.html
-    assert "<h3>صديق</h3>" in rich.html
+    assert rich.html.startswith("<h1>مقارنة ودية</h1><hr/>")
+    assert "<table compact>" in rich.html
+    assert "<th>الطرف الأول</th><th>الطرف الثاني</th>" in rich.html
+    assert "<b>حسين</b>" in rich.html
+    assert "<b>صديق</b>" in rich.html
+    assert "bordered" not in rich.html
     assert "<details><summary>الحساب</summary>" in rich.html
     assert "<details><summary>الخيارات</summary>" in rich.html
-    assert "إنتوا فريق واحد" not in rich.html
-    assert rich.html.count("<li>") >= 10
 
 
 def test_story_page_keeps_choices_as_rich_buttons():
@@ -220,7 +222,8 @@ def test_story_page_keeps_choices_as_rich_buttons():
     assert "adv:image:10:20" in rich.html
     assert "adv:video5:10:20" in rich.html
     assert "adv:video10:10:20" in rich.html
-    assert rich.html.count("<li>") >= 8
+    assert rich.html.count("<table compact>") >= 2
+    assert "bordered" not in rich.html
     assert "النشر يتم بعد تأكيدك" in rich.html
 
 
@@ -255,3 +258,18 @@ def test_fallback_navigation_is_one_button_per_row():
     keyboard = navigation(10, 20)
     assert len(keyboard.inline_keyboard) == 5
     assert all(len(row) == 1 for row in keyboard.inline_keyboard)
+
+
+def test_tasks_page_explains_combo_in_plain_iraqi():
+    from app.adventures.rules import make_day
+    import random
+
+    profile = Profile()
+    daily = make_day("2026-09-20", profile, 12, random.Random(8))
+    rich = rich_page(profile, daily, "tasks", 10, 20)
+
+    assert "<table compact>" in rich.html
+    assert "<th>المهمة</th><th>XP</th>" in rich.html
+    assert "تتجدد كل 6 ساعات" in rich.html
+    assert "الـCombo يعني شكد يوم ورا بعض" in rich.html
+    assert "إذا تأخرتوا بعد 10" in rich.html
