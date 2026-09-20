@@ -49,7 +49,7 @@ def test_scheduler_sends_warning_through_guest_mode():
     today = datetime.now(timezone.utc).date()
     yesterday = (today - timedelta(days=1)).isoformat()
     streak = StreakRecord(
-        business_connection_id="bc-1", chat_id=20, peer_user_id=30,
+        business_connection_id="bc-1", chat_id=20, peer_user_id=30, streak_mode="message",
         current_streak=5, longest_streak=5, completed_days=5,
         break_count=0, last_completed_day=yesterday,
         owner_sent_day=today.isoformat(), peer_sent_day=None,
@@ -83,7 +83,7 @@ def test_broken_streak_starts_guest_only_broken_flow():
     today = datetime.now(timezone.utc).date()
     day_before_yesterday = (today - timedelta(days=2)).isoformat()
     streak = StreakRecord(
-        business_connection_id="bc-1", chat_id=20, peer_user_id=30,
+        business_connection_id="bc-1", chat_id=20, peer_user_id=30, streak_mode="message",
         current_streak=5, longest_streak=5, completed_days=5,
         break_count=0, last_completed_day=day_before_yesterday,
         owner_sent_day=None, peer_sent_day=None,
@@ -119,7 +119,7 @@ def test_broken_streak_does_not_send_business_fallback_if_guest_is_unavailable()
     today = datetime.now(timezone.utc).date()
     day_before_yesterday = (today - timedelta(days=2)).isoformat()
     streak = StreakRecord(
-        business_connection_id="bc-1", chat_id=20, peer_user_id=30,
+        business_connection_id="bc-1", chat_id=20, peer_user_id=30, streak_mode="message",
         current_streak=5, longest_streak=5, completed_days=5,
         break_count=0, last_completed_day=day_before_yesterday,
         owner_sent_day=None, peer_sent_day=None,

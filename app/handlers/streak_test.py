@@ -62,6 +62,7 @@ def parse_streak_test_query(text: str | None) -> str | None:
         "انكسار": "broken",
         "broken": "broken",
         "احياء": "revive",
+        "إحياء": "revive",
         "revive": "revive",
         "الكل": "all",
         "all": "all",

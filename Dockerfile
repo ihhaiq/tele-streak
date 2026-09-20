@@ -9,6 +9,8 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         fonts-dejavu-core \
+        ffmpeg \
+        libraqm0 \
         gosu \
     && rm -rf /var/lib/apt/lists/*
 

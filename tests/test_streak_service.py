@@ -18,6 +18,7 @@ def message(connection_id: str, chat_id: int, sender_id: int, message_id: int):
         chat=SimpleNamespace(id=chat_id),
         from_user=SimpleNamespace(id=sender_id),
         message_id=message_id,
+        text="هلا",
     )
 
 

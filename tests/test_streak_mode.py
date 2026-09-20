@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.database.engine import Database
+from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
 from app.handlers.streak_mode import build_mode_menu
 from app.services.message_filter import matches_streak_mode
@@ -77,6 +78,7 @@ def test_repository_persists_streak_mode_across_restart(tmp_path):
         await database.init()
         repository = Repository(database)
         await repository.upsert_connection("bc-1", 10, None, True)
+        await StreakActivationRepository(database).activate("bc-1", 20)
 
         await repository.register_activity(
             connection_id="bc-1",

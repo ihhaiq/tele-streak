@@ -69,6 +69,7 @@ def test_status_uses_rich_h1_and_details(tmp_path):
 
     asyncio.run(service.send_status(
         connection_id="bc-1",
+        owner_user_id=10,
         chat_id=20,
         current=7,
         longest=12,
@@ -96,6 +97,7 @@ def test_status_uses_rich_h1_and_details(tmp_path):
 def test_zero_breaks_are_hidden_and_zero_protection_is_clear():
     rich = build_streak_rich_message(
         current=4,
+        owner_user_id=10, chat_id=20,
         longest=9,
         completed_days=10,
         break_count=0,

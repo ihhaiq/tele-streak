@@ -9,8 +9,10 @@ from zoneinfo import ZoneInfo
 
 from aiogram.types import Message
 
+from app.adventures.rules import Activity
 from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
+from app.services.message_filter import matches_streak_mode
 from app.stickers.poses import PoseCatalog
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,8 @@ class Completion:
     days: int = 0
     pose: str | None = None
     duplicate: bool = False
+    adventure_notice: bool = False
+    celebrate: bool = False
 
 
 @dataclass(slots=True)
@@ -147,7 +151,22 @@ class StreakService:
                     sender_id = message.from_user.id
                     role = "owner" if sender_id == owner_id else "peer"
                     peer_id = None if role == "owner" else sender_id
-                    today, yesterday = await self._days(connection_id)
+                    zone = await self.repository.get_connection_timezone(connection_id)
+                    now = datetime.now(ZoneInfo(zone)) if zone else datetime.now(self.tz)
+                    today = now.date().isoformat()
+                    yesterday = (now.date() - timedelta(days=1)).isoformat()
+                    qualifies = record is None or matches_streak_mode(message, record.streak_mode)
+                    kind = next((kind for kind in ('photo', 'video', 'voice')
+                                 if getattr(message, kind, None)), '')
+                    activity = Activity(
+                        at=now, role=role, kind=kind, qualifies=qualifies,
+                        words=len((getattr(message, 'text', None) or getattr(message, 'caption', None) or '').split()),
+                        name=getattr(message.from_user, 'full_name', ''),
+                    )
+                    sent_at = getattr(message, 'date', None)
+                    if isinstance(sent_at, datetime) and sent_at.astimezone(now.tzinfo).date() != now.date():
+                        # تحديث قديم ما ياخذ مكافآت يوم جديد.
+                        activity = None
                     result = await self.repository.register_activity(
                         connection_id=connection_id,
                         chat_id=message.chat.id,
@@ -157,12 +176,15 @@ class StreakService:
                         today=today,
                         yesterday=yesterday,
                         choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
+                        adventure=activity, qualifies=qualifies,
                     )
                     completion = Completion(
                         completed=result.completed,
                         days=result.days,
                         pose=result.pose_id,
                         duplicate=result.duplicate,
+                        adventure_notice=result.adventure_notice,
+                        celebrate=result.celebrate,
                     )
         self._release_lock(key)
         return completion
@@ -188,6 +210,10 @@ class StreakService:
                     today=today,
                     yesterday=yesterday,
                     choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
+                    adventure=Activity(
+                        at=datetime.now(ZoneInfo(await self.repository.get_connection_timezone(connection_id) or self.tz.key)),
+                        role="owner",
+                    ),
                 )
                 completion = Completion(
                     completed=result.completed,
@@ -226,6 +252,10 @@ class StreakService:
                     today=today,
                     yesterday=yesterday,
                     choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
+                    adventure=Activity(
+                        at=datetime.now(ZoneInfo(await self.repository.get_connection_timezone(connection_id) or self.tz.key)),
+                        role="peer",
+                    ),
                 )
                 completion = Completion(
                     completed=result.completed,

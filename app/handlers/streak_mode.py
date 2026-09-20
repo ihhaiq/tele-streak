@@ -87,10 +87,12 @@ async def _restore_status(
     bot: Bot,
     repository: Repository,
     streak,
+    adventures=None,
 ) -> None:
     timezone_name = await repository.get_connection_timezone(
         streak.business_connection_id
     )
+    profile = (await adventures.snapshot(streak.business_connection_id, streak.chat_id))[0] if adventures else None
     await _edit_rich(
         callback,
         bot,
@@ -105,11 +107,12 @@ async def _restore_status(
             chat_id=streak.chat_id,
             streak_mode=streak.streak_mode,
             timezone_name=timezone_name,
+            adventure_profile=profile,
         ),
     )
 
 
-def build_router(repository: Repository) -> Router:
+def build_router(repository: Repository, adventures=None) -> Router:
     router = Router(name="streak_mode")
 
     @router.callback_query(F.data.startswith("streak_mode:open:"))
@@ -194,7 +197,7 @@ def build_router(repository: Repository) -> Router:
             return
 
         with suppress(TelegramBadRequest):
-            await _restore_status(callback, bot, repository, streak)
+            await _restore_status(callback, bot, repository, streak, adventures)
         await callback.answer(
             f"تم تغيير وضع الستريك إلى: {STREAK_MODE_LABELS[mode]}",
             show_alert=True,
@@ -221,7 +224,7 @@ def build_router(repository: Repository) -> Router:
             return
 
         with suppress(TelegramBadRequest):
-            await _restore_status(callback, bot, repository, streak)
+            await _restore_status(callback, bot, repository, streak, adventures)
         await callback.answer()
 
     return router

@@ -11,7 +11,7 @@ from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
 from app.keyboards.streak import start_request_keyboard
 from app.services.guest_delivery import GuestDeliveryService
-from app.services.message_filter import matches_streak_mode, should_count
+from app.services.message_filter import should_count
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
 
@@ -81,6 +81,7 @@ def build_router(
     repository: Repository,
     activations: StreakActivationRepository,
     guests: GuestDeliveryService,
+    adventures=None,
 ) -> Router:
     router = Router(name="business_messages")
 
@@ -145,6 +146,7 @@ def build_router(
                     owner_user_id = await repository.get_owner_id(connection_id)
                     if owner_user_id is None:
                         return
+                    profile = (await adventures.snapshot(connection_id, message.chat.id))[0] if adventures else None
                     await stickers.send_status(
                         connection_id=connection_id,
                         owner_user_id=owner_user_id,
@@ -157,6 +159,7 @@ def build_router(
                         last_completed_day=status.last_completed_day,
                         streak_mode=record.streak_mode,
                         timezone_name=timezone_name,
+                        adventure_profile=profile,
                     )
             elif connection_id:
                 logger.warning(
@@ -349,11 +352,10 @@ def build_router(
         if record is not None and not record.is_enabled:
             return
 
-        if record is not None and not matches_streak_mode(message, record.streak_mode):
-            return
-
         completion = await streaks.register_message(message)
         if not completion.completed or completion.pose is None:
+            if adventures is not None:
+                await adventures.after_activity(connection_id, message.chat.id, completion)
             return
 
         sent = await guests.summon(
@@ -377,5 +379,8 @@ def build_router(
                     message.chat.id,
                     completion.days,
                 )
+
+        if adventures is not None:
+            await adventures.after_activity(connection_id, message.chat.id, completion)
 
     return router

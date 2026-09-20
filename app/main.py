@@ -13,6 +13,7 @@ from app.database.activation_repository import StreakActivationRepository
 from app.database.engine import Database
 from app.database.repository import Repository
 from app.database.revive_request_repository import ReviveRequestRepository
+from app.handlers.adventures import build_router as adventures_router
 from app.handlers.business import build_router as business_router
 from app.handlers.callbacks import build_router as callbacks_router
 from app.handlers.connection import build_router as connection_router
@@ -22,6 +23,7 @@ from app.handlers.guest_callbacks import build_router as guest_callbacks_router
 from app.handlers.private import build_router as private_router
 from app.handlers.streak_mode import build_router as streak_mode_router
 from app.handlers.streak_test import build_router as streak_test_router
+from app.services.adventure_service import AdventureService
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.scheduler import StreakScheduler
 from app.services.sticker_service import StickerService
@@ -64,15 +66,17 @@ async def main() -> None:
         sticker_set_title=settings.sticker_set_title,
     )
     guests = GuestDeliveryService(bot, repository)
+    adventures = AdventureService(bot, repository, guests, music_path=settings.story_music_path)
     streak_tests = StreakTestService(repository)
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
     dp.include_router(streak_test_router(repository, stickers, guests, streak_tests))
     dp.include_router(
-        business_router(streaks, stickers, repository, activations, guests)
+        business_router(streaks, stickers, repository, activations, guests, adventures)
     )
-    dp.include_router(guest_router(repository, stickers, revive_requests, guests))
-    dp.include_router(streak_mode_router(repository))
+    dp.include_router(guest_router(repository, stickers, revive_requests, guests, adventures))
+    dp.include_router(adventures_router(repository, adventures))
+    dp.include_router(streak_mode_router(repository, adventures))
     dp.include_router(guest_callbacks_router(repository, revive_requests))
     dp.include_router(callbacks_router(repository, activations, streaks))
     dp.include_router(private_router(repository, stickers))
