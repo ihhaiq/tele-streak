@@ -51,7 +51,8 @@ Optional settings:
   packs are global and shared by all bot users; ownership never follows users.
 - `STICKER_SET_TITLE` — visible Telegram sticker-set title.
 - `STORY_MUSIC_ATTEMPTS` — YouTube search/download attempts for each story video (default 3).
-- `STORY_YOUTUBE_COOKIE_FILE` — optional cookies file for YouTube on cloud hosting.
+- `STORY_YOUTUBE_COOKIES_B64` — preferred Railway secret: Base64-encoded Netscape `cookies.txt`. It is decoded only to a temporary `0600` file and deleted on shutdown.
+- `STORY_YOUTUBE_COOKIE_FILE` — optional local-file alternative for self-hosted deployments.
 - `STORY_YOUTUBE_POT_PROVIDER_HOME` — bgutil PO-token server directory; Docker sets this to `/opt/bgutil-ytdlp-pot-provider/server`.
 - `STORY_SHARE_TTL_SECONDS` — how long a preview can still be published (default 900 seconds).
 
@@ -205,3 +206,27 @@ after a successful publish or when the request expires/replaces an older pending
 preview.
 
 YouTube extraction uses current `yt-dlp[default]`, Deno/EJS and the bgutil PO Token provider. The bot tries `mweb` with a generated PO token first, then `web_safari`, `android_vr`, and finally the default extractor. This is designed for cloud hosts such as Railway where YouTube may return 403 or bot-check responses. `STORY_MUSIC_ATTEMPTS` controls retries. `STORY_YOUTUBE_COOKIE_FILE` remains optional.
+
+
+### Railway YouTube cookies
+
+If YouTube returns `Sign in to confirm you're not a bot` on Railway, PO tokens
+alone may not be enough for the datacenter IP. Export a Netscape-format
+`cookies.txt` from a browser session you control, encode the file as Base64,
+and store only the encoded value in Railway as `STORY_YOUTUBE_COOKIES_B64`.
+
+PowerShell example:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt"))
+```
+
+Do not commit the cookies file or the Base64 value, and do not paste either into
+issues, logs, or chat. The bot validates the Netscape header, writes the decoded
+cookies to a random file under the OS temporary directory with mode `0600`,
+passes that path to yt-dlp, and deletes the temporary file during shutdown.
+
+If YouTube still returns the bot-check after valid fresh cookies, the remaining
+problem is the Railway egress IP/session reputation rather than the story
+renderer. In that case use a different hosting egress/proxy that is authorized
+for your own YouTube session.
