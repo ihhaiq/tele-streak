@@ -161,6 +161,14 @@ class AdventureService:
                 raise
 
     @staticmethod
+    async def _delete_shared_file_later(path: Path, delay: int) -> None:
+        await asyncio.sleep(max(60, delay))
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("STORY_SHARE_DELETE_FAILED path=%s", path)
+
+    @staticmethod
     def _cleanup_shared_files(folder: Path, max_age_seconds: int) -> None:
         cutoff = time.time() - max_age_seconds
         for item in folder.glob("*"):
@@ -212,6 +220,10 @@ class AdventureService:
                 temporary = target.with_name(target.name + ".tmp")
                 await asyncio.to_thread(shutil.copyfile, rendered, temporary)
                 await asyncio.to_thread(os.replace, temporary, target)
+                asyncio.create_task(
+                    self._delete_shared_file_later(target, max_age_seconds + 60),
+                    name=f"story-share-cleanup-{token[:8]}",
+                )
         logger.info(
             "STORY_SHARE_READY owner=%s chat=%s kind=%s token=%s",
             owner,
