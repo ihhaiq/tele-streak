@@ -157,8 +157,21 @@ def build_router(
             return
 
         action = parts[1]
-        mode = parts[2] if action == "set" and len(parts) == 4 else None
-        token = parts[3] if mode is not None else parts[2]
+        if action == "set":
+            if len(parts) != 4:
+                await callback.answer("طلب غير صالح.", show_alert=True)
+                return
+            mode = parts[2]
+            token = parts[3]
+        elif action in {"open", "back"}:
+            if len(parts) != 3:
+                await callback.answer("طلب غير صالح.", show_alert=True)
+                return
+            mode = None
+            token = parts[2]
+        else:
+            await callback.answer("طلب غير صالح.", show_alert=True)
+            return
 
         settings = await repository.get_streak_settings(token)
         if settings is None:
