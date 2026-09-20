@@ -24,31 +24,33 @@ def build_mode_menu(
     chat_id: int,
     current_mode: str,
 ) -> InputRichMessage:
-    buttons: list[str] = []
+    items: list[str] = []
     for mode in STREAK_MODES:
         label = STREAK_MODE_LABELS.get(mode, STREAK_MODE_LABELS[MODE_MESSAGE])
         if mode == current_mode:
-            buttons.append(
-                f'<tg-button type="disabled" style="primary">✓ {label}</tg-button>'
-            )
+            button = f'<tg-button type="disabled" style="link">✓ {label}</tg-button>'
         else:
-            buttons.append(
-                '<tg-button type="callback_data" style="primary" '
+            button = (
+                '<tg-button type="callback_data" style="link" '
                 f'data="streak_mode:set:{mode}:{owner_user_id}:{chat_id}">{label}</tg-button>'
             )
+        items.append(f"<li>{button}</li>")
+
+    items.append(
+        "<li>"
+        '<tg-button type="callback_data" style="link" '
+        f'data="streak_mode:cancel:{owner_user_id}:{chat_id}">رجوع</tg-button>'
+        "</li>"
+    )
 
     return InputRichMessage(
         html=(
-            "<h1>🔥 وضع الستريك</h1>"
-            "<p>اختار شنو لازم يرسل كل طرف حتى تنحسب مشاركته اليوم.</p>"
-            '<tg-button-row align="center">'
-            + "".join(buttons)
-            + "</tg-button-row>"
-            "<footer>"
-            f"الوضع الحالي: <b>{streak_mode_label(current_mode)}</b><br>"
-            '<tg-button type="callback_data" style="link" '
-            f'data="streak_mode:cancel:{owner_user_id}:{chat_id}">رجوع</tg-button>'
-            "</footer>"
+            "<h1>وضع الستريك</h1>"
+            "<p>حدد شنو ينحسب مشاركة يومية.</p>"
+            "<ul>"
+            + "".join(items)
+            + "</ul>"
+            f"<footer>الحالي: <b>{streak_mode_label(current_mode)}</b></footer>"
         ),
         is_rtl=True,
     )
