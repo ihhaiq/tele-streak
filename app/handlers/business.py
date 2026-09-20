@@ -262,7 +262,7 @@ def build_router(
             return
 
         mode = await streak_modes.get_mode(connection_id, message.chat.id)
-        if not should_count(message, mode):
+        if not should_count(message, mode) and not is_start_streak_query(message.text):
             return
 
         owner_id = await streaks.get_owner_id(message)
