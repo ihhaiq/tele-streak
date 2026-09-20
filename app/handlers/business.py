@@ -18,6 +18,10 @@ from app.services.streak_service import StreakService
 logger = logging.getLogger(__name__)
 
 
+def _transport_unavailable(result) -> bool:
+    return bool(getattr(result, "transport_unavailable", False))
+
+
 def _normalize_text(text: str | None) -> str:
     if not text:
         return ""
@@ -87,7 +91,23 @@ def build_router(
 
     @router.business_message()
     async def on_business_message(message: Message) -> None:
-        connection_id = message.business_connection_id
+        incoming_connection_id = message.business_connection_id
+        connection_id = (
+            await repository.resolve_active_connection_id(incoming_connection_id)
+            if incoming_connection_id
+            else None
+        ) or incoming_connection_id
+        if (
+            incoming_connection_id
+            and connection_id
+            and incoming_connection_id != connection_id
+        ):
+            logger.info(
+                "BUSINESS_CONNECTION_REBOUND old=%s new=%s chat=%s",
+                incoming_connection_id,
+                connection_id,
+                message.chat.id,
+            )
 
         if is_streak_query(message.text):
             logger.info(
@@ -96,7 +116,7 @@ def build_router(
                 message.chat.id,
                 message.message_id,
             )
-            status = await streaks.get_status(message)
+            status = await streaks.get_status(message, connection_id)
             if status is not None and connection_id:
                 record = await repository.get_streak(connection_id, message.chat.id)
                 active = await activations.is_active(connection_id, message.chat.id)
@@ -118,6 +138,8 @@ def build_router(
                         chat_id=message.chat.id,
                         reply_to_message_id=message.message_id,
                     )
+                    if _transport_unavailable(sent):
+                        return
                     if not sent:
                         pose = record.last_pose or streaks.poses.choose(status.current, None).id
                         try:
@@ -141,6 +163,8 @@ def build_router(
                     chat_id=message.chat.id,
                     reply_to_message_id=message.message_id,
                 )
+                if _transport_unavailable(sent):
+                    return
                 if not sent:
                     timezone_name = await repository.get_connection_timezone(connection_id)
                     owner_user_id = await repository.get_owner_id(connection_id)
@@ -178,7 +202,7 @@ def build_router(
         if add_days is not None:
             if not connection_id or message.from_user is None:
                 return
-            owner_id = await streaks.get_owner_id(message)
+            owner_id = await streaks.get_owner_id(message, connection_id)
             if owner_id is None or message.from_user.id != owner_id:
                 return
             if add_days <= 0:
@@ -233,7 +257,7 @@ def build_router(
         if is_revive_streak_query(message.text):
             if not connection_id or message.from_user is None:
                 return
-            owner_id = await streaks.get_owner_id(message)
+            owner_id = await streaks.get_owner_id(message, connection_id)
             if owner_id is None:
                 return
             record = await repository.get_streak(connection_id, message.chat.id)
@@ -250,6 +274,8 @@ def build_router(
                 reply_to_message_id=message.message_id,
                 ttl_seconds=90,
             )
+            if _transport_unavailable(sent):
+                return
             if not sent:
                 await stickers.send_notice_text(
                     connection_id=connection_id,
@@ -285,7 +311,7 @@ def build_router(
                 return
 
             await activations.clear_chat(connection_id, message.chat.id)
-            await streaks.start_by_owner(message)
+            await streaks.start_by_owner(message, connection_id)
             await stickers.send_notice_text(
                 connection_id=connection_id,
                 chat_id=message.chat.id,
@@ -352,7 +378,7 @@ def build_router(
         if record is not None and not record.is_enabled:
             return
 
-        completion = await streaks.register_message(message)
+        completion = await streaks.register_message(message, connection_id)
         if not completion.completed or completion.pose is None:
             if adventures is not None:
                 await adventures.after_activity(connection_id, message.chat.id, completion)
@@ -364,6 +390,8 @@ def build_router(
             chat_id=message.chat.id,
             reply_to_message_id=message.message_id,
         )
+        if _transport_unavailable(sent):
+            return
         if not sent:
             try:
                 await stickers.send_success(
