@@ -235,6 +235,17 @@ class AdventureRepository:
             )
             return result.rowcount == 1
 
+    async def release_story_claim(
+        self, connection_id: str, chat_id: int, timestamp: float
+    ) -> None:
+        async with self.database.connect() as db:
+            await db.execute(
+                """UPDATE adventure_profiles SET story_claim_at=0
+                WHERE business_connection_id=? AND chat_id=? AND story_claim_at=?""",
+                (connection_id, chat_id, timestamp),
+            )
+            await db.commit()
+
 
     async def create_story_publish_request(
         self,
