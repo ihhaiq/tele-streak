@@ -50,20 +50,65 @@ class YouTubeTrack:
     webpage_url: str
 
 
+@dataclass(frozen=True, slots=True)
+class _ClientMode:
+    name: str
+    extractor_args: dict[str, dict[str, list[str]]]
+    allow_cookies: bool = True
+
+
 class YouTubeStoryMusic:
-    """Pick a random real YouTube track and download only the needed short clip."""
+    """Pick a real YouTube track using multiple extraction strategies."""
 
     def __init__(
         self,
         *,
         cookie_file: Path | None = None,
+        pot_provider_home: Path | None = None,
         attempts: int = 3,
     ):
         self.cookie_file = cookie_file if cookie_file and cookie_file.is_file() else None
+        self.pot_provider_home = (
+            pot_provider_home
+            if pot_provider_home and pot_provider_home.is_dir()
+            else None
+        )
         self.attempts = max(1, min(int(attempts), 6))
         self._random = random.SystemRandom()
 
-    def _base_options(self) -> dict:
+    def _modes(self) -> tuple[_ClientMode, ...]:
+        modes: list[_ClientMode] = []
+        if self.pot_provider_home is not None:
+            modes.append(
+                _ClientMode(
+                    "mweb-pot",
+                    {
+                        "youtube": {
+                            "player_client": ["mweb", "default"],
+                        },
+                        "youtubepot-bgutilscript": {
+                            "server_home": [str(self.pot_provider_home)],
+                        },
+                    },
+                )
+            )
+        modes.extend(
+            (
+                _ClientMode(
+                    "web-safari",
+                    {"youtube": {"player_client": ["web_safari"]}},
+                ),
+                _ClientMode(
+                    "android-vr",
+                    {"youtube": {"player_client": ["android_vr"]}},
+                    allow_cookies=False,
+                ),
+                _ClientMode("default", {}),
+            )
+        )
+        return tuple(modes)
+
+    def _base_options(self, mode: _ClientMode) -> dict:
         options = {
             "quiet": True,
             "no_warnings": True,
@@ -71,8 +116,11 @@ class YouTubeStoryMusic:
             "retries": 2,
             "fragment_retries": 2,
             "socket_timeout": 20,
+            "source_address": "0.0.0.0",
         }
-        if self.cookie_file:
+        if mode.extractor_args:
+            options["extractor_args"] = mode.extractor_args
+        if self.cookie_file and mode.allow_cookies:
             options["cookiefile"] = str(self.cookie_file)
         return options
 
@@ -91,25 +139,53 @@ class YouTubeStoryMusic:
         title = str(entry.get("title") or "").casefold()
         return bool(title) and not any(part in title for part in _BAD_TITLE_PARTS)
 
-    def _search(self, query: str) -> list[dict]:
-        options = self._base_options()
-        options.update(
-            {
-                "extract_flat": "in_playlist",
-                "skip_download": True,
-                "playlistend": 8,
-            }
-        )
-        with YoutubeDL(options) as ydl:
-            result = ydl.extract_info(f"ytsearch8:{query}", download=False)
-        entries = (result or {}).get("entries") or []
-        return [entry for entry in entries if self._valid_entry(entry)]
+    @staticmethod
+    def _brief_error(error: Exception) -> str:
+        message = " ".join(str(error).split())
+        return message[:500] or error.__class__.__name__
 
-    def _download_clip(
+    def _search(self, query: str) -> list[dict]:
+        last_error: Exception | None = None
+        for mode in self._modes():
+            options = self._base_options(mode)
+            options.update(
+                {
+                    "extract_flat": "in_playlist",
+                    "skip_download": True,
+                    "playlistend": 8,
+                }
+            )
+            try:
+                with YoutubeDL(options) as ydl:
+                    result = ydl.extract_info(f"ytsearch8:{query}", download=False)
+                entries = (result or {}).get("entries") or []
+                valid = [entry for entry in entries if self._valid_entry(entry)]
+                if valid:
+                    logger.info(
+                        "STORY_YOUTUBE_SEARCH_OK mode=%s query=%r results=%s",
+                        mode.name,
+                        query,
+                        len(valid),
+                    )
+                    return valid
+            except Exception as error:
+                last_error = error
+                logger.warning(
+                    "STORY_YOUTUBE_SEARCH_MODE_FAILED mode=%s query=%r error=%s",
+                    mode.name,
+                    query,
+                    self._brief_error(error),
+                )
+        if last_error:
+            raise DownloadError(self._brief_error(last_error))
+        return []
+
+    def _download_with_mode(
         self,
         entry: dict,
         directory: Path,
         duration: int,
+        mode: _ClientMode,
     ) -> YouTubeTrack:
         video_id = str(entry.get("id") or "").strip()
         webpage_url = str(entry.get("webpage_url") or "").strip()
@@ -124,14 +200,14 @@ class YouTubeStoryMusic:
         if latest <= 8:
             start = 0.0
         else:
-            # Skip intros when possible and favor the middle of the song.
             low = min(latest, max(8.0, total * 0.25))
             high = min(latest, max(low, total * 0.65))
             start = self._random.uniform(low, high) if high > low else low
         end = min(total, start + clip_length)
 
-        output_template = str(directory / "youtube-%(id)s.%(ext)s")
-        options = self._base_options()
+        safe_mode = mode.name.replace("-", "_")
+        output_template = str(directory / f"youtube-{safe_mode}-%(id)s.%(ext)s")
+        options = self._base_options(mode)
         options.update(
             {
                 "format": "bestaudio/best",
@@ -140,29 +216,68 @@ class YouTubeStoryMusic:
                 "force_keyframes_at_cuts": True,
             }
         )
-        before = set(directory.glob("youtube-*"))
+
+        before = set(directory.glob(f"youtube-{safe_mode}-*"))
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(webpage_url, download=True)
             prepared = Path(ydl.prepare_filename(info))
+
         if prepared.is_file():
             path = prepared
         else:
-            created = [item for item in directory.glob("youtube-*") if item not in before]
+            created = [
+                item
+                for item in directory.glob(f"youtube-{safe_mode}-*")
+                if item not in before and item.is_file()
+            ]
             if not created:
                 raise DownloadError("yt-dlp did not create the requested audio clip")
             path = max(created, key=lambda item: item.stat().st_mtime)
 
         title = str((info or {}).get("title") or entry.get("title") or "YouTube")
         url = str((info or {}).get("webpage_url") or webpage_url)
+        logger.info(
+            "STORY_YOUTUBE_DOWNLOAD_OK mode=%s title=%r url=%s",
+            mode.name,
+            title,
+            url,
+        )
         return YouTubeTrack(path=path, title=title, webpage_url=url)
+
+    def _download_clip(
+        self,
+        entry: dict,
+        directory: Path,
+        duration: int,
+    ) -> YouTubeTrack:
+        last_error: Exception | None = None
+        for mode in self._modes():
+            try:
+                return self._download_with_mode(entry, directory, duration, mode)
+            except Exception as error:
+                last_error = error
+                logger.warning(
+                    "STORY_YOUTUBE_DOWNLOAD_MODE_FAILED mode=%s title=%r error=%s",
+                    mode.name,
+                    entry.get("title"),
+                    self._brief_error(error),
+                )
+        raise RuntimeError(
+            "كل طرق استخراج YouTube فشلت: "
+            + (self._brief_error(last_error) if last_error else "unknown error")
+        ) from last_error
 
     def fetch(self, directory: Path, duration: int) -> YouTubeTrack:
         directory.mkdir(parents=True, exist_ok=True)
         last_error: Exception | None = None
         pools = (_ARABIC_QUERIES, _FOREIGN_QUERIES)
 
+        if self.pot_provider_home is None:
+            logger.warning(
+                "STORY_YOUTUBE_POT_PROVIDER_UNAVAILABLE fallback_modes=web-safari,android-vr,default"
+            )
+
         for _ in range(self.attempts):
-            # 50/50 Arabic / foreign without showing a choice to the user.
             query = self._random.choice(self._random.choice(pools))
             try:
                 candidates = self._search(query)
@@ -171,26 +286,17 @@ class YouTubeStoryMusic:
                 self._random.shuffle(candidates)
                 for candidate in candidates[:3]:
                     try:
-                        track = self._download_clip(candidate, directory, duration)
-                        logger.info(
-                            "STORY_YOUTUBE_MUSIC_SELECTED title=%r url=%s",
-                            track.title,
-                            track.webpage_url,
-                        )
-                        return track
+                        return self._download_clip(candidate, directory, duration)
                     except Exception as error:
                         last_error = error
-                        logger.warning(
-                            "STORY_YOUTUBE_MUSIC_CANDIDATE_FAILED query=%r error=%s",
-                            query,
-                            error,
-                        )
             except Exception as error:
                 last_error = error
                 logger.warning(
-                    "STORY_YOUTUBE_MUSIC_SEARCH_FAILED query=%r error=%s",
+                    "STORY_YOUTUBE_ATTEMPT_FAILED query=%r error=%s",
                     query,
-                    error,
+                    self._brief_error(error),
                 )
 
-        raise RuntimeError("تعذر جلب أغنية من YouTube") from last_error
+        detail = self._brief_error(last_error) if last_error else "unknown error"
+        logger.error("STORY_YOUTUBE_ALL_FAILED error=%s", detail)
+        raise RuntimeError(f"تعذر جلب أغنية من YouTube: {detail}") from last_error
