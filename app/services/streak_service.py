@@ -66,6 +66,15 @@ class StreakService:
     def forget_owner(self, connection_id: str) -> None:
         self._owner_cache.pop(connection_id, None)
 
+    def forget_owner_id(self, owner_user_id: int) -> None:
+        stale = [
+            connection_id
+            for connection_id, cached_owner in self._owner_cache.items()
+            if cached_owner == owner_user_id
+        ]
+        for connection_id in stale:
+            self._owner_cache.pop(connection_id, None)
+
     def _release_lock(self, key: tuple[str, int]) -> None:
         lock = self._locks.get(key)
         if lock is not None and not lock.locked() and len(self._locks) > LOCK_CACHE_SIZE:
@@ -77,8 +86,12 @@ class StreakService:
         today_date = datetime.now(timezone).date()
         return today_date.isoformat(), (today_date - timedelta(days=1)).isoformat()
 
-    async def _ensure_owner(self, message: Message) -> int | None:
-        connection_id = message.business_connection_id
+    async def _ensure_owner(
+        self,
+        message: Message,
+        connection_id: str | None = None,
+    ) -> int | None:
+        connection_id = connection_id or message.business_connection_id
         if not connection_id:
             return None
         cached = self._owner_cache.get(connection_id)
@@ -112,14 +125,22 @@ class StreakService:
             )
             return None
 
-    async def get_owner_id(self, message: Message) -> int | None:
-        return await self._ensure_owner(message)
+    async def get_owner_id(
+        self,
+        message: Message,
+        connection_id: str | None = None,
+    ) -> int | None:
+        return await self._ensure_owner(message, connection_id)
 
-    async def get_status(self, message: Message) -> StreakStatus | None:
-        connection_id = message.business_connection_id
+    async def get_status(
+        self,
+        message: Message,
+        connection_id: str | None = None,
+    ) -> StreakStatus | None:
+        connection_id = connection_id or message.business_connection_id
         if not connection_id or message.from_user is None:
             return None
-        if await self._ensure_owner(message) is None:
+        if await self._ensure_owner(message, connection_id) is None:
             return None
         record = await self.repository.get_streak(connection_id, message.chat.id)
         if record is None:
@@ -133,13 +154,17 @@ class StreakService:
             last_completed_day=record.last_completed_day,
         )
 
-    async def register_message(self, message: Message) -> Completion:
-        connection_id = message.business_connection_id
+    async def register_message(
+        self,
+        message: Message,
+        connection_id: str | None = None,
+    ) -> Completion:
+        connection_id = connection_id or message.business_connection_id
         if not connection_id or message.from_user is None:
             return Completion(False)
         key = (connection_id, message.chat.id)
         async with self._locks[key]:
-            owner_id = await self._ensure_owner(message)
+            owner_id = await self._ensure_owner(message, connection_id)
             active = await self.activations.is_active(connection_id, message.chat.id)
             if owner_id is None or not active:
                 completion = Completion(False)
@@ -189,13 +214,17 @@ class StreakService:
         self._release_lock(key)
         return completion
 
-    async def start_by_owner(self, message: Message) -> Completion:
-        connection_id = message.business_connection_id
+    async def start_by_owner(
+        self,
+        message: Message,
+        connection_id: str | None = None,
+    ) -> Completion:
+        connection_id = connection_id or message.business_connection_id
         if not connection_id or message.from_user is None:
             return Completion(False)
         key = (connection_id, message.chat.id)
         async with self._locks[key]:
-            owner_id = await self._ensure_owner(message)
+            owner_id = await self._ensure_owner(message, connection_id)
             if owner_id is None or message.from_user.id != owner_id:
                 completion = Completion(False)
             else:
