@@ -251,10 +251,11 @@ class AdventureService:
             return "Jake دا يجهز ستوريات، جرب بعد شوي 😆"
 
         async with self._story_slots:
+            claim_timestamp = datetime.now(timezone.utc).timestamp()
             if not await self.data.claim_story(
                 record.business_connection_id,
                 record.chat_id,
-                datetime.now(timezone.utc).timestamp(),
+                claim_timestamp,
             ):
                 return "انتظر دقيقة بين كل ستوري والثاني 🎬"
 
@@ -265,9 +266,26 @@ class AdventureService:
             )
             with TemporaryDirectory(prefix="streak-story-preview-") as directory:
                 folder = Path(directory)
-                media, thumbnail, music_title = await self._render_story_assets(
-                    record, owner, kind, folder
-                )
+                try:
+                    media, thumbnail, music_title = await self._render_story_assets(
+                        record, owner, kind, folder
+                    )
+                except RuntimeError as error:
+                    await self.data.release_story_claim(
+                        record.business_connection_id,
+                        record.chat_id,
+                        claim_timestamp,
+                    )
+                    if "YouTube" in str(error):
+                        return "تعذر جلب أغنية من YouTube هالمرة، جرب مرة ثانية 🎵"
+                    raise
+                except Exception:
+                    await self.data.release_story_claim(
+                        record.business_connection_id,
+                        record.chat_id,
+                        claim_timestamp,
+                    )
+                    raise
                 asset_id = secrets.token_hex(10)
                 media_suffix = ".jpg" if kind == "image" else ".mp4"
                 media_target = self.share_dir / f"{asset_id}{media_suffix}"
