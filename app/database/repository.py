@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import secrets
 
+from app.streak_modes import STREAK_MODES
+
 from .engine import Database
 
 
@@ -920,7 +922,7 @@ class Repository:
         chat_id: int,
         mode: str,
     ) -> StreakRecord | None:
-        if mode not in {"message", "photo_video", "voice"}:
+        if mode not in STREAK_MODES:
             raise ValueError("unknown streak mode")
 
         async with self.database.connect() as db:
