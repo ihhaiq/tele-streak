@@ -3,8 +3,13 @@ from __future__ import annotations
 from contextlib import suppress
 
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputRichMessage,
+)
 
 from app.database.revive_request_repository import ReviveApprovalState, ReviveRequestRepository
 from app.database.repository import Repository
@@ -75,7 +80,7 @@ async def _edit_callback(
     bot: Bot,
     *,
     text: str | None = None,
-    rich_message=None,
+    rich_message: InputRichMessage | None = None,
     reply_markup: InlineKeyboardMarkup | None = None,
 ) -> bool:
     try:
@@ -101,7 +106,7 @@ async def _edit_callback(
             reply_markup=reply_markup,
         )
         return True
-    except TelegramBadRequest:
+    except (TelegramBadRequest, TelegramForbiddenError):
         return False
 
 
@@ -194,18 +199,24 @@ def build_router(
                 text=_mode_text(settings.mode),
                 reply_markup=_mode_keyboard(token, settings.mode),
             )
-            await callback.answer(
-                "" if edited else "تعذر فتح إعدادات وضع الستريك.",
-                show_alert=not edited,
-            )
+            if edited:
+                await callback.answer()
+            else:
+                await callback.answer(
+                    "تعذر فتح إعدادات وضع الستريك.",
+                    show_alert=True,
+                )
             return
 
         if action == "back":
             restored = await _restore_status(callback, bot, repository, token)
-            await callback.answer(
-                "" if restored else "تعذر الرجوع إلى حالة الستريك.",
-                show_alert=not restored,
-            )
+            if restored:
+                await callback.answer()
+            else:
+                await callback.answer(
+                    "تعذر الرجوع إلى حالة الستريك.",
+                    show_alert=True,
+                )
             return
 
         if action != "set" or mode not in {"message", "media", "voice"}:
