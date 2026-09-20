@@ -11,7 +11,7 @@ from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
 from app.keyboards.streak import start_request_keyboard
 from app.services.guest_delivery import GuestDeliveryService
-from app.services.message_filter import should_count
+from app.services.message_filter import matches_streak_mode, should_count
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
 
@@ -278,10 +278,22 @@ def build_router(
 
             await activations.clear_chat(connection_id, message.chat.id)
             await streaks.start_by_owner(message)
+            current_record = await repository.get_streak(connection_id, message.chat.id)
+            current_mode = (
+                current_record.streak_mode
+                if current_record is not None
+                else (record.streak_mode if record is not None else "message")
+            )
+            if matches_streak_mode(message, current_mode):
+                notice = "🔥 بدأ الستريك. تم احتساب رسالتك، وبانتظار الطرف الثاني اليوم."
+            elif current_mode == "media":
+                notice = "🔥 بدأ الستريك. الوضع الحالي صورة / فيديو، وبانتظار صورة أو فيديو منك ومن الطرف الثاني."
+            else:
+                notice = "🔥 بدأ الستريك. الوضع الحالي بصمة صوتية، وبانتظار بصمة صوتية منك ومن الطرف الثاني."
             await stickers.send_notice_text(
                 connection_id=connection_id,
                 chat_id=message.chat.id,
-                text="🔥 بدأ الستريك. تم احتساب رسالتك، وبانتظار رسالة من الطرف الثاني اليوم.",
+                text=notice,
             )
             logger.info(
                 "STREAK_STARTED_BY_OWNER connection=%s chat=%s",
@@ -292,6 +304,10 @@ def build_router(
 
         if not active:
             if sender_id == owner_id:
+                return
+
+            mode = record.streak_mode if record is not None else "message"
+            if not matches_streak_mode(message, mode):
                 return
 
             owner_target = await activations.get_owner_target(connection_id)
