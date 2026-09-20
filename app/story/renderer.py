@@ -4,10 +4,7 @@ import math
 import random
 import shutil
 import subprocess
-import sys
 import unicodedata
-import wave
-from array import array
 from functools import lru_cache
 from pathlib import Path
 
@@ -101,51 +98,6 @@ def avatar_ball(name: str, image_path: Path | None, color: str) -> Image.Image:
     return ball
 
 
-def soundtrack(path: Path, seconds: int):
-    # لحن احتفالي أصلي؛ ممكن تبديله بملف الأغنية من الإعدادات.
-    rate = 22050
-    melody = (
-        523.25,
-        659.25,
-        783.99,
-        659.25,
-        587.33,
-        698.46,
-        880,
-        783.99,
-        659.25,
-        783.99,
-        1046.5,
-        987.77,
-        880,
-        783.99,
-        659.25,
-        523.25,
-    )
-    samples = array("h")
-    for i in range(rate * seconds):
-        t = i / rate
-        beat = int(t / 0.25)
-        phase = t % 0.25
-        envelope = min(1, phase / 0.012) * max(0, 1 - phase / 0.25) ** 0.7
-        freq = melody[beat % len(melody)]
-        note = math.sin(2 * math.pi * freq * t) + 0.2 * math.sin(4 * math.pi * freq * t)
-        bass = 0.3 * math.sin(2 * math.pi * (130.81 if beat % 16 < 8 else 174.61) * t)
-        kick_phase = t % 0.5
-        kick = (
-            0.3 * math.sin(2 * math.pi * 65 * kick_phase) * math.exp(-kick_phase * 30)
-        )
-        fade = min(1, t / 0.15, (seconds - t) / 0.4)
-        samples.append(int(11000 * fade * (envelope * note * 0.6 + bass + kick)))
-    if sys.byteorder != "little":
-        samples.byteswap()
-    with wave.open(str(path), "wb") as output:
-        output.setnchannels(1)
-        output.setsampwidth(2)
-        output.setframerate(rate)
-        output.writeframes(samples.tobytes())
-
-
 def story_card(
     *,
     days: int,
@@ -209,9 +161,6 @@ def story_card(
 
 
 class StoryRenderer:
-    def __init__(self, music_path: Path | None = None):
-        self.music_path = music_path
-
     def render_image(
         self,
         directory: Path,
@@ -242,6 +191,7 @@ class StoryRenderer:
         names: tuple[str, str],
         photos: tuple[Path | None, Path | None] = (None, None),
         duration: int = 5,
+        music_path: Path | None = None,
     ) -> Path:
         if duration not in (5, 10) or days < 1:
             raise ValueError("Story requires a positive streak and 5 or 10 seconds")
@@ -252,12 +202,9 @@ class StoryRenderer:
         directory.mkdir(parents=True, exist_ok=True)
         frames = directory / "frames"
         frames.mkdir()
-        music = self.music_path
-        if music is None:
-            music = directory / "celebration.wav"
-            soundtrack(music, duration)
-        elif not music.is_file():
-            raise FileNotFoundError("STORY_MUSIC_PATH is not a file")
+        if music_path is None or not music_path.is_file():
+            raise FileNotFoundError("YouTube story music clip is missing")
+        music = music_path
         background = Image.new("RGB", (WIDTH, HEIGHT))
         draw = ImageDraw.Draw(background)
         palette = ("#ffd56b", "#7ce3d2", "#e4a9ff", "#ff969f")
