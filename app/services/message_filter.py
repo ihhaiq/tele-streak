@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aiogram.types import Message
 
-from app.streak_modes import MODE_PHOTO_VIDEO, MODE_VOICE
+from app.streak_modes import MODE_MESSAGE, MODE_PHOTO_VIDEO, MODE_VOICE
 
 
 def should_count(message: Message) -> bool:
@@ -41,8 +41,10 @@ def should_count(message: Message) -> bool:
 
 def matches_streak_mode(message: Message, mode: str) -> bool:
     """Return whether a countable message satisfies the chat's streak mode."""
+    if mode == MODE_MESSAGE:
+        return bool(message.text)
     if mode == MODE_PHOTO_VIDEO:
         return bool(message.photo or message.video)
     if mode == MODE_VOICE:
         return message.voice is not None
-    return True
+    return False
