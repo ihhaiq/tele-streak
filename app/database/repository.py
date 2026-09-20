@@ -227,6 +227,18 @@ class Repository:
                 )
             await db.commit()
 
+    async def disable_connection(self, connection_id: str) -> None:
+        async with self.database.connect() as db:
+            await db.execute(
+                """
+                UPDATE business_connections
+                SET is_enabled=0, updated_at=?
+                WHERE business_connection_id=?
+                """,
+                (self._now(), connection_id),
+            )
+            await db.commit()
+
     async def get_owner_id(self, connection_id: str) -> int | None:
         async with self.database.connect() as db:
             cursor = await db.execute(
