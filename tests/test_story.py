@@ -12,7 +12,6 @@ from app.story.renderer import (
     avatar_ball,
     celebration_art,
     clean_name,
-    soundtrack,
 )
 
 
@@ -33,13 +32,6 @@ def test_celebration_has_safe_margins_and_full_body():
     # القدمين ضمن الربع الأخير؛ ما يرجع القص القديم.
     assert image.crop((0, 400, 512, 512)).getbbox()
 
-
-def test_built_in_music_is_audible_and_exact_duration(tmp_path):
-    path = tmp_path / "music.wav"
-    soundtrack(path, 5)
-    with wave.open(str(path), "rb") as music:
-        assert music.getnframes() / music.getframerate() == 5
-        assert len(set(music.readframes(5000))) > 20
 
 
 @pytest.mark.skipif(
@@ -73,6 +65,12 @@ def test_real_story_has_motion_arabic_h265_aac_and_portrait_dimensions(
     tmp_path, duration
 ):
     avatar = tmp_path / "profile.jpg"
+    music = tmp_path / "youtube-clip.wav"
+    with wave.open(str(music), "wb") as output_music:
+        output_music.setnchannels(1)
+        output_music.setsampwidth(2)
+        output_music.setframerate(22050)
+        output_music.writeframes(b"\x00\x00" * 22050 * (duration + 1))
     Image.new("RGB", (300, 240), "#41bca9").save(avatar)
     output = StoryRenderer().render(
         tmp_path,
@@ -80,6 +78,7 @@ def test_real_story_has_motion_arabic_h265_aac_and_portrait_dimensions(
         names=("حسين", "صديق"),
         photos=(avatar, None),
         duration=duration,
+        music_path=music,
     )
     meta = json.loads(
         subprocess.check_output(
@@ -133,6 +132,9 @@ def test_story_rejects_bad_duration_and_missing_song(tmp_path):
         StoryRenderer().render(tmp_path, days=1, names=("A", "B"), duration=20)
     if shutil.which("ffmpeg") and features.check_feature("raqm"):
         with pytest.raises(FileNotFoundError):
-            StoryRenderer(tmp_path / "missing.mp3").render(
-                tmp_path, days=1, names=("A", "B")
+            StoryRenderer().render(
+                tmp_path,
+                days=1,
+                names=("A", "B"),
+                music_path=tmp_path / "missing.mp3",
             )

@@ -22,9 +22,8 @@ class Settings:
     message_effect_id: str | None
     sticker_set_owner_id: int | None
     sticker_set_title: str
-    story_music_path: Path | None = None
-    public_base_url: str | None = None
-    http_port: int = 8080
+    story_youtube_cookie_file: Path | None = None
+    story_music_attempts: int = 3
     story_share_ttl_seconds: int = 900
 
 
@@ -59,12 +58,8 @@ def load_settings() -> Settings:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     rendered_dir.mkdir(parents=True, exist_ok=True)
 
-    story_music = os.getenv("STORY_MUSIC_PATH", "").strip()
+    youtube_cookie = os.getenv("STORY_YOUTUBE_COOKIE_FILE", "").strip()
     effect_id = os.getenv("MESSAGE_EFFECT_ID", DEFAULT_FIRE_EFFECT_ID).strip()
-    public_base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
-    railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
-    if not public_base_url and railway_domain:
-        public_base_url = f"https://{railway_domain}"
     return Settings(
         bot_token=token,
         database_path=database_path,
@@ -73,9 +68,8 @@ def load_settings() -> Settings:
         ready_stickers_dir=ready_stickers_dir,
         rendered_dir=rendered_dir,
         message_effect_id=effect_id or None,
-        story_music_path=Path(story_music) if story_music else None,
-        public_base_url=public_base_url or None,
-        http_port=_int("PORT", 8080),
+        story_youtube_cookie_file=Path(youtube_cookie) if youtube_cookie else None,
+        story_music_attempts=max(1, min(_int("STORY_MUSIC_ATTEMPTS", 3), 6)),
         story_share_ttl_seconds=max(60, min(_int("STORY_SHARE_TTL_SECONDS", 900), 3600)),
         sticker_set_owner_id=_optional_int("STICKER_SET_OWNER_ID"),
         sticker_set_title=os.getenv("STICKER_SET_TITLE", "Jake Streak").strip()

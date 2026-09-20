@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import secrets
 import shutil
 import time
@@ -15,11 +14,17 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import FSInputFile
+from aiogram.types import (
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyParameters,
+)
 
 from app.adventures.views import navigation, progress_text
 from app.database.adventure_repository import AdventureRepository
 from app.story.renderer import StoryRenderer, write_celebration
+from app.story.youtube_music import YouTubeStoryMusic
 
 logger = logging.getLogger(__name__)
 
@@ -37,17 +42,20 @@ class AdventureService:
         repository,
         guests,
         *,
-        music_path: Path | None = None,
-        public_base_url: str | None = None,
         share_dir: Path | None = None,
         share_ttl_seconds: int = 900,
+        youtube_cookie_file: Path | None = None,
+        music_attempts: int = 3,
     ):
         self.bot = bot
         self.repository = repository
         self.data = AdventureRepository(repository.database)
         self.guests = guests
-        self.renderer = StoryRenderer(music_path)
-        self.public_base_url = (public_base_url or "").rstrip("/")
+        self.renderer = StoryRenderer()
+        self.music = YouTubeStoryMusic(
+            cookie_file=youtube_cookie_file,
+            attempts=music_attempts,
+        )
         self.share_dir = Path(share_dir) if share_dir else None
         if self.share_dir is not None:
             self.share_dir.mkdir(parents=True, exist_ok=True)
@@ -145,7 +153,7 @@ class AdventureService:
         owner: int,
         kind: str,
         folder: Path,
-    ) -> tuple[Path, Path]:
+    ) -> tuple[Path, Path, str | None]:
         profile, _ = await self.snapshot(
             record.business_connection_id, record.chat_id
         )
@@ -171,10 +179,12 @@ class AdventureService:
             photos=photos,
         )
         if kind == "image":
-            return cover, cover
+            return cover, cover, None
         if kind not in {"video5", "video10"}:
             raise ValueError("unsupported story kind")
+
         duration = 5 if kind == "video5" else 10
+        track = await asyncio.to_thread(self.music.fetch, folder, duration)
         job = asyncio.create_task(
             asyncio.to_thread(
                 self.renderer.render,
@@ -183,6 +193,7 @@ class AdventureService:
                 names=names,
                 photos=photos,
                 duration=duration,
+                music_path=track.path,
             )
         )
         try:
@@ -192,7 +203,7 @@ class AdventureService:
                 await job
             finally:
                 raise
-        return video, cover
+        return video, cover, track.title
 
     @staticmethod
     def _unlink_paths(paths) -> None:
@@ -234,16 +245,17 @@ class AdventureService:
             return "نوع الستوري غير مدعوم."
         if record.current_streak < 1:
             return "كملوا أول يوم حتى نسوي ستوري 🔥"
-        if not self.public_base_url or self.share_dir is None:
-            return "ميزة المعاينة تحتاج Public Domain للخدمة على Railway."
+        if self.share_dir is None:
+            return "تعذر تجهيز مساحة مؤقتة لمعاينة الستوري."
         if self._story_slots.locked():
             return "Jake دا يجهز ستوريات، جرب بعد شوي 😆"
 
         async with self._story_slots:
+            claim_timestamp = datetime.now(timezone.utc).timestamp()
             if not await self.data.claim_story(
                 record.business_connection_id,
                 record.chat_id,
-                datetime.now(timezone.utc).timestamp(),
+                claim_timestamp,
             ):
                 return "انتظر دقيقة بين كل ستوري والثاني 🎬"
 
@@ -254,9 +266,26 @@ class AdventureService:
             )
             with TemporaryDirectory(prefix="streak-story-preview-") as directory:
                 folder = Path(directory)
-                media, thumbnail = await self._render_story_assets(
-                    record, owner, kind, folder
-                )
+                try:
+                    media, thumbnail, music_title = await self._render_story_assets(
+                        record, owner, kind, folder
+                    )
+                except RuntimeError as error:
+                    await self.data.release_story_claim(
+                        record.business_connection_id,
+                        record.chat_id,
+                        claim_timestamp,
+                    )
+                    if "YouTube" in str(error):
+                        return "تعذر جلب أغنية من YouTube هالمرة، جرب مرة ثانية 🎵"
+                    raise
+                except Exception:
+                    await self.data.release_story_claim(
+                        record.business_connection_id,
+                        record.chat_id,
+                        claim_timestamp,
+                    )
+                    raise
                 asset_id = secrets.token_hex(10)
                 media_suffix = ".jpg" if kind == "image" else ".mp4"
                 media_target = self.share_dir / f"{asset_id}{media_suffix}"
@@ -281,18 +310,52 @@ class AdventureService:
             )
             await asyncio.to_thread(self._unlink_paths, old_paths)
 
-            summoned = await self.guests.summon(
-                event="story_preview",
-                connection_id=record.business_connection_id,
-                chat_id=record.chat_id,
-                reply_to_message_id=reply_to_message_id,
-                ttl_seconds=120,
-                payload=request.token,
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🚀 نشر الستوري",
+                            callback_data=f"story_publish:{request.token}",
+                        )
+                    ]
+                ]
             )
-            if not summoned:
+            caption = (
+                f"🔥 ستريك متتالي لـ {record.current_streak} يوم!\n"
+                + (f"🎵 {music_title}\n" if music_title else "")
+                + "\nهاي معاينة الستوري. إذا عجبك اضغط «نشر الستوري»."
+            )
+            destination = {
+                "chat_id": record.chat_id,
+                "business_connection_id": record.business_connection_id,
+                "caption": caption,
+                "reply_markup": keyboard,
+            }
+            if reply_to_message_id is not None:
+                destination["reply_parameters"] = ReplyParameters(
+                    message_id=reply_to_message_id
+                )
+
+            try:
+                if kind == "image":
+                    await self.bot.send_photo(
+                        **destination,
+                        photo=FSInputFile(media_target, filename="streak-story.jpg"),
+                    )
+                else:
+                    duration = 5 if kind == "video5" else 10
+                    await self.bot.send_video(
+                        **destination,
+                        video=FSInputFile(media_target, filename="streak-story.mp4"),
+                        duration=duration,
+                        width=720,
+                        height=1280,
+                        supports_streaming=True,
+                    )
+            except Exception:
                 paths = await self.data.delete_story_publish_request(request.token)
                 await asyncio.to_thread(self._unlink_paths, paths)
-                return "تعذر إرسال معاينة الستوري بوضع الضيف."
+                raise
 
             asyncio.create_task(
                 self._expire_story_request(
@@ -301,31 +364,6 @@ class AdventureService:
                 name=f"story-preview-expire-{request.token}",
             )
         return None
-
-    async def story_preview(self, token: str, connection_id: str, chat_id: int):
-        request = await self.data.get_story_publish_request(token)
-        if (
-            request is None
-            or request.business_connection_id != connection_id
-            or request.chat_id != chat_id
-        ):
-            return None
-        return {
-            "token": request.token,
-            "kind": request.kind,
-            "days": request.days,
-            "media_url": f"{self.public_base_url}/story/media/{request.token}",
-            "thumbnail_url": f"{self.public_base_url}/story/thumb/{request.token}",
-        }
-
-    async def story_preview_asset(
-        self, token: str, *, thumbnail: bool = False
-    ) -> Path | None:
-        request = await self.data.get_story_publish_request(token)
-        if request is None:
-            return None
-        path = Path(request.thumbnail_path if thumbnail else request.media_path)
-        return path if path.is_file() else None
 
     async def _post_story(self, request) -> int:
         path = Path(request.media_path)
@@ -413,52 +451,8 @@ class AdventureService:
             return StoryPublishResult("failed")
 
         await self.data.complete_story_publish(token, story_id)
+        await asyncio.to_thread(
+            self._unlink_paths,
+            [request.media_path, request.thumbnail_path],
+        )
         return StoryPublishResult("published", story_id)
-
-    async def send_story_image(self, record, owner: int) -> str | None:
-        if record.current_streak < 1:
-            return "كملوا أول يوم حتى نسوي ستوري 🔥"
-        if self._story_slots.locked():
-            return "Jake دا يجهز ستوريات، جرب بعد شوي 😆"
-        async with self._story_slots:
-            with TemporaryDirectory(prefix="streak-story-") as directory:
-                media, _ = await self._render_story_assets(
-                    record, owner, "image", Path(directory)
-                )
-                await self.bot.send_photo(
-                    chat_id=record.chat_id,
-                    business_connection_id=record.business_connection_id,
-                    photo=FSInputFile(media, filename="streak-story.jpg"),
-                    caption=(
-                        f"🔥 ستريك متتالي لـ {record.current_streak} يوم!\n"
-                        "معاينة الستوري 🖼️"
-                    ),
-                )
-        return None
-
-    async def send_story(self, record, owner: int, duration: int) -> str | None:
-        if duration not in {5, 10}:
-            return "مدة الفيديو غير مدعومة."
-        if record.current_streak < 1:
-            return "كملوا أول يوم حتى نسوي ستوري 🔥"
-        if self._story_slots.locked():
-            return "Jake دا يجهز ستوريات، جرب بعد شوي 😆"
-        async with self._story_slots:
-            with TemporaryDirectory(prefix="streak-story-") as directory:
-                media, _ = await self._render_story_assets(
-                    record, owner, f"video{duration}", Path(directory)
-                )
-                await self.bot.send_video(
-                    chat_id=record.chat_id,
-                    business_connection_id=record.business_connection_id,
-                    video=FSInputFile(media, filename="streak-story.mp4"),
-                    duration=duration,
-                    width=720,
-                    height=1280,
-                    supports_streaming=True,
-                    caption=(
-                        f"🔥 ستريك متتالي لـ {record.current_streak} يوم!\n"
-                        "معاينة الستوري 🎬"
-                    ),
-                )
-        return None
