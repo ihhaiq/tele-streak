@@ -6,18 +6,23 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InputRichMessage, Message
 
-from app.database.repository import Repository
+from app.database.repository import Repository, StreakRecord
 from app.services.rich_status import (
     build_streak_rich_message,
     current_day,
 )
-from app.streak_modes import STREAK_MODE_LABELS, STREAK_MODES
+from app.streak_modes import (
+    MODE_MESSAGE,
+    STREAK_MODE_LABELS,
+    STREAK_MODES,
+    streak_mode_label,
+)
 
 
 def build_mode_menu(chat_id: int, current_mode: str) -> InputRichMessage:
     buttons: list[str] = []
     for mode in STREAK_MODES:
-        label = STREAK_MODE_LABELS[mode]
+        label = STREAK_MODE_LABELS.get(mode, STREAK_MODE_LABELS[MODE_MESSAGE])
         if mode == current_mode:
             buttons.append(
                 f'<tg-button type="disabled" style="primary">✓ {label}</tg-button>'
@@ -36,7 +41,7 @@ def build_mode_menu(chat_id: int, current_mode: str) -> InputRichMessage:
             + "".join(buttons)
             + "</tg-button-row>"
             "<footer>"
-            f"الوضع الحالي: <b>{STREAK_MODE_LABELS.get(current_mode, STREAK_MODE_LABELS['message'])}</b><br>"
+            f"الوضع الحالي: <b>{streak_mode_label(current_mode)}</b><br>"
             '<tg-button type="callback_data" style="link" '
             f'data="streak_mode:cancel:{chat_id}">رجوع</tg-button>'
             "</footer>"
@@ -62,7 +67,11 @@ async def _edit_rich(
     return False
 
 
-async def _owner_streak(repository: Repository, callback: CallbackQuery, chat_id: int):
+async def _owner_streak(
+    repository: Repository,
+    callback: CallbackQuery,
+    chat_id: int,
+) -> StreakRecord | None:
     return await repository.get_owner_streak(callback.from_user.id, chat_id)
 
 
@@ -138,6 +147,7 @@ def build_router(repository: Repository) -> Router:
             await callback.answer()
             return
         if mode not in STREAK_MODE_LABELS:
+
             await callback.answer("وضع غير صالح.", show_alert=True)
             return
 
