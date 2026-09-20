@@ -18,6 +18,7 @@ from app.adventures.rules import Profile
 from app.adventures.views import navigation
 from app.database.repository import Repository
 from app.keyboards.streak import revive_streak_keyboard, streak_keyboard
+from app.services.business_errors import is_business_transport_error
 from app.services.rich_status import (
     build_streak_fallback_text,
     build_streak_rich_message,
@@ -73,6 +74,12 @@ class StickerService:
             title=sticker_set_title,
         )
 
+    async def _active_connection(self, connection_id: str) -> str:
+        return (
+            await self.repository.resolve_active_connection_id(connection_id)
+            or connection_id
+        )
+
     async def send_notice_text(
         self,
         *,
@@ -80,6 +87,7 @@ class StickerService:
         chat_id: int,
         text: str,
     ) -> None:
+        connection_id = await self._active_connection(connection_id)
         await self.bot.send_message(
             chat_id=chat_id,
             business_connection_id=connection_id,
@@ -92,6 +100,7 @@ class StickerService:
         connection_id: str,
         chat_id: int,
     ) -> Message:
+        connection_id = await self._active_connection(connection_id)
         try:
             return await self.bot.send_rich_message(
                 chat_id=chat_id,
@@ -126,6 +135,7 @@ class StickerService:
         timezone_name: str | None = None,
         adventure_profile: Profile | None = None,
     ) -> None:
+        connection_id = await self._active_connection(connection_id)
         rich_message = build_streak_rich_message(
             current=current,
             longest=longest,
@@ -151,6 +161,8 @@ class StickerService:
             )
             return
         except TelegramBadRequest as error:
+            if is_business_transport_error(error):
+                raise
             if self.message_effect_id:
                 logger.warning(
                     "STREAK_RICH_EFFECT_REJECTED error=%s",
@@ -160,6 +172,8 @@ class StickerService:
                     await self.bot.send_rich_message(**kwargs)
                     return
                 except TelegramBadRequest as rich_error:
+                    if is_business_transport_error(rich_error):
+                        raise
                     logger.warning(
                         "STREAK_RICH_REJECTED error=%s",
                         rich_error,
@@ -215,6 +229,8 @@ class StickerService:
                 message_effect_id=self.message_effect_id if with_effect else None,
             )
         except TelegramBadRequest as error:
+            if is_business_transport_error(error):
+                raise
             if not (with_effect and self.message_effect_id):
                 raise
             logger.warning("Message effect rejected; sending sticker without it: %s", error)
@@ -261,6 +277,7 @@ class StickerService:
         revive_available: bool = False,
         reply_to_message_id: int | None = None,
     ) -> None:
+        connection_id = await self._active_connection(connection_id)
         if name not in {"warning", "broken"}:
             raise ValueError("unknown special sticker")
         sticker_key = f"special:{name}"
@@ -294,7 +311,9 @@ class StickerService:
                     reply_markup=reply_markup,
                     reply_to_message_id=reply_to_message_id,
                 )
-            except TelegramBadRequest:
+            except TelegramBadRequest as error:
+                if is_business_transport_error(error):
+                    raise
                 logger.warning(
                     "Cached special sticker rejected; uploading: key=%s",
                     sticker_key,
@@ -324,6 +343,7 @@ class StickerService:
         pose: str,
         days: int,
     ) -> None:
+        connection_id = await self._active_connection(connection_id)
         sent: Message | None = None
 
         pack_file_id = self.pack.cached_file_id(str(days))
@@ -349,7 +369,9 @@ class StickerService:
                     days=days,
                     with_effect=True,
                 )
-            except TelegramBadRequest:
+            except TelegramBadRequest as error:
+                if is_business_transport_error(error):
+                    raise
                 logger.warning(
                     "Cached sticker file_id rejected; uploading again: key=%s",
                     sticker_key,
