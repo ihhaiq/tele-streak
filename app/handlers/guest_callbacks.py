@@ -15,7 +15,11 @@ from aiogram.types import (
 from app.database.revive_request_repository import ReviveApprovalState, ReviveRequestRepository
 from app.database.repository import Repository
 from app.streak_modes import STREAK_MODE_LABELS, STREAK_MODES
-from app.services.rich_status import build_streak_rich_message, protection_text
+from app.services.rich_status import (
+    build_streak_rich_message,
+    current_day,
+    protection_text,
+)
 
 
 def _approval_text(state: ReviveApprovalState) -> str:
@@ -166,10 +170,21 @@ def build_router(
             await callback.answer("وضع غير صالح.", show_alert=True)
             return
 
+        current = await repository.get_owner_streak(callback.from_user.id, chat_id)
+        if current is None:
+            await callback.answer(
+                "فقط صاحب الحساب يكدر يغير وضع الستريك.",
+                show_alert=True,
+            )
+            return
+        timezone_name = await repository.get_connection_timezone(
+            current.business_connection_id
+        )
         streak = await repository.set_streak_mode(
             callback.from_user.id,
             chat_id,
             mode,
+            current_day(timezone_name),
         )
         if streak is None:
             await callback.answer(
