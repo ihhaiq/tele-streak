@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from aiogram.types import Message
 
+from app.streak_modes import MODE_PHOTO_VIDEO, MODE_VOICE
+
 
 def should_count(message: Message) -> bool:
     # This MVP only tracks private Business chats.
@@ -37,17 +39,10 @@ def should_count(message: Message) -> bool:
     )
 
 
-STREAK_MODE_LABELS = {
-    "message": "رسالة",
-    "photo_video": "صورة / فيديو",
-    "voice": "بصمة صوتية",
-}
-
-
 def matches_streak_mode(message: Message, mode: str) -> bool:
     """Return whether a countable message satisfies the chat's streak mode."""
-    if mode == "photo_video":
+    if mode == MODE_PHOTO_VIDEO:
         return bool(message.photo or message.video)
-    if mode == "voice":
+    if mode == MODE_VOICE:
         return message.voice is not None
     return True
