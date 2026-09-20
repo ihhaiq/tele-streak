@@ -144,9 +144,9 @@ def build_router(repository, adventures) -> Router:
             text = build_streak_fallback_text(**values)
             keyboard = navigation(owner, chat)
         elif action == "story":
-            text = "🎬 مشاركة ستوري\nاختار المدة، وJake يلعب بكرتين بيهن صوركم وأسماءكم، ويا موسيقى 🎵"
+            text = "🎬 مشاركة ستوري\nاختار صورة ستوري مباشرة، أو فيديو ٥/١٠ ثواني. Jake يلعب بكرتين بيهن صوركم وأسماءكم."
             rich = InputRichMessage(
-                html="<h1>🎬 مشاركة ستوري</h1><p>اختار المدة، وJake يلعب بكرتين بيهن صوركم وأسماءكم، ويا موسيقى 🎵</p>",
+                html="<h1>🎬 مشاركة ستوري</h1><p>اختار صورة ستوري مباشرة، أو فيديو ٥/١٠ ثواني. Jake يلعب بكرتين بيهن صوركم وأسماءكم.</p>",
                 is_rtl=True,
             )
             keyboard = story_menu(owner, chat)
