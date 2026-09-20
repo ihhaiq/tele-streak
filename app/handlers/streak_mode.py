@@ -154,6 +154,7 @@ def build_router(repository: Repository) -> Router:
         )
         streak = await repository.set_streak_mode(
             callback.from_user.id,
+            current.business_connection_id,
             chat_id,
             mode,
             current_day(timezone_name),
