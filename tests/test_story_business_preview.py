@@ -123,3 +123,46 @@ def test_youtube_music_returns_selected_youtube_track(monkeypatch, tmp_path):
     result = music.fetch(tmp_path, 10)
     assert result == expected
     assert isinstance(result.path, Path)
+
+
+def test_youtube_failure_releases_story_rate_limit(tmp_path):
+    async def run():
+        data = SimpleNamespace(
+            claim_story=AsyncMock(return_value=True),
+            release_story_claim=AsyncMock(),
+        )
+        bot = SimpleNamespace(
+            send_video=AsyncMock(),
+            send_photo=AsyncMock(),
+        )
+        guests = SimpleNamespace(summon=AsyncMock())
+        repo = SimpleNamespace(database=None)
+        service = AdventureService(
+            bot,
+            repo,
+            guests,
+            share_dir=tmp_path / "shared",
+        )
+        service.data = data
+        service._render_story_assets = AsyncMock(
+            side_effect=RuntimeError("تعذر جلب أغنية من YouTube")
+        )
+
+        record = SimpleNamespace(
+            current_streak=12,
+            business_connection_id="bc-1",
+            chat_id=20,
+        )
+        error = await service.prepare_story_preview(
+            record,
+            10,
+            "video5",
+        )
+
+        assert "YouTube" in error
+        data.release_story_claim.assert_awaited_once()
+        bot.send_video.assert_not_awaited()
+        bot.send_photo.assert_not_awaited()
+        guests.summon.assert_not_awaited()
+
+    asyncio.run(run())
