@@ -31,6 +31,7 @@ from app.services.streak_service import StreakService
 from app.services.streak_test_service import StreakTestService
 from app.stickers.poses import PoseCatalog
 from app.stickers.renderer import StickerRenderer
+from app.story.web import StoryShareWeb
 
 
 async def main() -> None:
@@ -52,6 +53,7 @@ async def main() -> None:
         default=DefaultBotProperties(link_preview_is_disabled=True),
     )
     dp = Dispatcher()
+    me = await bot.get_me()
 
     poses = PoseCatalog(settings.assets_dir)
     renderer = StickerRenderer(poses, settings.rendered_dir)
@@ -67,6 +69,22 @@ async def main() -> None:
     )
     guests = GuestDeliveryService(bot, repository)
     adventures = AdventureService(bot, repository, guests, music_path=settings.story_music_path)
+    story_web = None
+    if settings.public_base_url and me.username:
+        story_web = StoryShareWeb(
+            bot_token=settings.bot_token,
+            bot_username=me.username,
+            public_base_url=settings.public_base_url,
+            adventures=adventures,
+            share_dir=settings.rendered_dir / "story_share",
+            ttl_seconds=settings.story_share_ttl_seconds,
+            main_app_enabled=bool(getattr(me, "has_main_web_app", False)),
+        )
+        await story_web.start("0.0.0.0", settings.http_port)
+        if not story_web.enabled:
+            logging.getLogger(__name__).warning(
+                "Story Mini App endpoint is ready, but Telegram Main Mini App is not enabled in BotFather."
+            )
     streak_tests = StreakTestService(repository)
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
@@ -75,7 +93,7 @@ async def main() -> None:
         business_router(streaks, stickers, repository, activations, guests, adventures)
     )
     dp.include_router(guest_router(repository, stickers, revive_requests, guests, adventures))
-    dp.include_router(adventures_router(repository, adventures))
+    dp.include_router(adventures_router(repository, adventures, story_web))
     dp.include_router(streak_mode_router(repository, adventures))
     dp.include_router(guest_callbacks_router(repository, revive_requests))
     dp.include_router(callbacks_router(repository, activations, streaks))
@@ -87,7 +105,6 @@ async def main() -> None:
         name="streak-scheduler",
     )
 
-    me = await bot.get_me()
     logging.getLogger(__name__).info(
         "Started @%s (%s) guest_mode=%s",
         me.username,
@@ -103,6 +120,8 @@ async def main() -> None:
         scheduler_task.cancel()
         with suppress(asyncio.CancelledError):
             await scheduler_task
+        if story_web is not None:
+            await story_web.close()
         await bot.session.close()
         await database.close()
 
