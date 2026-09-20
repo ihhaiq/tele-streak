@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS streaks (
     business_connection_id TEXT NOT NULL,
     chat_id INTEGER NOT NULL,
     peer_user_id INTEGER,
+    streak_mode TEXT NOT NULL DEFAULT 'message',
     current_streak INTEGER NOT NULL DEFAULT 0,
     longest_streak INTEGER NOT NULL DEFAULT 0,
     completed_days INTEGER NOT NULL DEFAULT 0,
@@ -169,6 +170,7 @@ PRAGMAS = (
 
 MIGRATIONS = (
     "ALTER TABLE business_connections ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Baghdad'",
+    "ALTER TABLE streaks ADD COLUMN streak_mode TEXT NOT NULL DEFAULT 'message'",
     "ALTER TABLE streaks ADD COLUMN completed_days INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN break_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE streaks ADD COLUMN last_warning_day TEXT",
