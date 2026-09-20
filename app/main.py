@@ -31,7 +31,7 @@ from app.services.streak_service import StreakService
 from app.services.streak_test_service import StreakTestService
 from app.stickers.poses import PoseCatalog
 from app.stickers.renderer import StickerRenderer
-from app.story.web import StoryShareWeb
+from app.story.media_server import StoryMediaServer
 
 
 async def main() -> None:
@@ -68,23 +68,26 @@ async def main() -> None:
         sticker_set_title=settings.sticker_set_title,
     )
     guests = GuestDeliveryService(bot, repository)
-    adventures = AdventureService(bot, repository, guests, music_path=settings.story_music_path)
-    story_web = None
-    if settings.public_base_url and me.username:
-        story_web = StoryShareWeb(
-            bot_token=settings.bot_token,
-            bot_username=me.username,
-            public_base_url=settings.public_base_url,
+    adventures = AdventureService(
+        bot,
+        repository,
+        guests,
+        music_path=settings.story_music_path,
+        public_base_url=settings.public_base_url,
+        share_dir=settings.rendered_dir / "story_share",
+        share_ttl_seconds=settings.story_share_ttl_seconds,
+    )
+    story_media = None
+    if settings.public_base_url:
+        story_media = StoryMediaServer(
             adventures=adventures,
-            share_dir=settings.rendered_dir / "story_share",
-            ttl_seconds=settings.story_share_ttl_seconds,
-            main_app_enabled=bool(getattr(me, "has_main_web_app", False)),
+            public_base_url=settings.public_base_url,
         )
-        await story_web.start("0.0.0.0", settings.http_port)
-        if not story_web.enabled:
-            logging.getLogger(__name__).warning(
-                "Story Mini App endpoint is ready, but Telegram Main Mini App is not enabled in BotFather."
-            )
+        await story_media.start("0.0.0.0", settings.http_port)
+    else:
+        logging.getLogger(__name__).warning(
+            "Story Guest preview is disabled until Railway has a public domain."
+        )
     streak_tests = StreakTestService(repository)
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
@@ -93,9 +96,9 @@ async def main() -> None:
         business_router(streaks, stickers, repository, activations, guests, adventures)
     )
     dp.include_router(guest_router(repository, stickers, revive_requests, guests, adventures))
-    dp.include_router(adventures_router(repository, adventures, story_web))
+    dp.include_router(adventures_router(repository, adventures))
     dp.include_router(streak_mode_router(repository, adventures))
-    dp.include_router(guest_callbacks_router(repository, revive_requests))
+    dp.include_router(guest_callbacks_router(repository, revive_requests, adventures))
     dp.include_router(callbacks_router(repository, activations, streaks))
     dp.include_router(private_router(repository, stickers))
 
@@ -120,8 +123,8 @@ async def main() -> None:
         scheduler_task.cancel()
         with suppress(asyncio.CancelledError):
             await scheduler_task
-        if story_web is not None:
-            await story_web.close()
+        if story_media is not None:
+            await story_media.close()
         await bot.session.close()
         await database.close()
 
