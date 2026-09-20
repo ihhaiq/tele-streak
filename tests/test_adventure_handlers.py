@@ -273,4 +273,5 @@ def test_tasks_page_explains_combo_in_plain_iraqi():
     assert "<th>المهمة</th><th>XP</th>" in rich.html
     assert "تتجدد كل 6 ساعات" in rich.html
     assert "الـCombo يعني شكد يوم ورا بعض" in rich.html
-    assert "إذا تأخرتوا بعد 10" in rich.html
+    assert "إذا خلصتوه بعد 10" in rich.html
+    assert "يرجع ×0" in rich.html
