@@ -8,7 +8,6 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    InputRichMessage,
     Message,
 )
 
@@ -189,7 +188,6 @@ def build_router(repository, adventures) -> Router:
                 await bot.send_rich_message(
                     **destination,
                     rich_message=rich,
-                    reply_markup=keyboard,
                 )
             except TelegramBadRequest:
                 await bot.send_message(
