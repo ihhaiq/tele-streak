@@ -278,3 +278,41 @@ def test_youtube_cookies_b64_rejects_invalid_base64():
         assert "Base64" in str(error)
     else:
         raise AssertionError("invalid Base64 must be rejected")
+
+
+def test_youtube_raw_cookies_materialized_securely(tmp_path):
+    cookies = "# Netscape HTTP Cookie File\n"
+    provider = tmp_path / "provider"
+    provider.mkdir()
+    music = YouTubeStoryMusic(
+        cookies_raw=cookies,
+        pot_provider_home=provider,
+    )
+    cookie_path = music.cookie_file
+    assert cookie_path is not None and cookie_path.is_file()
+    assert cookie_path.read_text() == cookies
+    assert stat.S_IMODE(cookie_path.stat().st_mode) == 0o600
+    modes = {mode.name: mode for mode in music._modes()}
+    assert music._base_options(modes["mweb-pot"])["cookiefile"] == str(cookie_path)
+    music.close()
+    assert not cookie_path.exists()
+
+
+def test_youtube_raw_cookies_take_priority_over_base64():
+    music = YouTubeStoryMusic(
+        cookies_raw="# Netscape HTTP Cookie File\n",
+        cookies_b64="not-base64",
+    )
+    try:
+        assert music.cookie_file is not None
+    finally:
+        music.close()
+
+
+def test_youtube_raw_cookies_reject_non_netscape_data():
+    try:
+        YouTubeStoryMusic(cookies_raw="plain text")
+    except RuntimeError as error:
+        assert "Netscape" in str(error)
+    else:
+        raise AssertionError("invalid raw cookie data must be rejected")
