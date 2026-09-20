@@ -876,10 +876,13 @@ class Repository:
                 SELECT s.* FROM streaks AS s
                 JOIN business_connections AS b
                   ON b.business_connection_id=s.business_connection_id
-                WHERE b.owner_user_id=? AND s.chat_id=? AND b.is_enabled=1
+                WHERE b.owner_user_id=?
+                  AND s.business_connection_id=?
+                  AND s.chat_id=?
+                  AND b.is_enabled=1
                 LIMIT 1
                 """,
-                (owner_user_id, chat_id),
+                (owner_user_id, connection_id, chat_id),
             )
             row = await cursor.fetchone()
             return self._streak_from_row(row) if row else None
@@ -919,6 +922,7 @@ class Repository:
     async def set_streak_mode(
         self,
         owner_user_id: int,
+        connection_id: str,
         chat_id: int,
         mode: str,
         today: str,
@@ -941,13 +945,25 @@ class Repository:
                         ELSE NULL
                     END,
                     updated_at=?
-                WHERE chat_id=? AND business_connection_id IN (
-                    SELECT business_connection_id
+                WHERE business_connection_id=? AND chat_id=?
+                  AND EXISTS (
+                    SELECT 1
                     FROM business_connections
-                    WHERE owner_user_id=? AND is_enabled=1
-                )
+                    WHERE business_connection_id=?
+                      AND owner_user_id=?
+                      AND is_enabled=1
+                  )
                 """,
-                (mode, today, today, self._now(), chat_id, owner_user_id),
+                (
+                    mode,
+                    today,
+                    today,
+                    self._now(),
+                    connection_id,
+                    chat_id,
+                    connection_id,
+                    owner_user_id,
+                ),
             )
             if cursor.rowcount != 1:
                 await db.rollback()
