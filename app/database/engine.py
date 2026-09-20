@@ -7,6 +7,8 @@ from typing import AsyncIterator
 
 import aiosqlite
 
+from .adventure_repository import SCHEMA as ADVENTURE_SCHEMA
+
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -242,7 +244,7 @@ class Database:
     async def init(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         async with self.connect() as db:
-            await db.executescript(SCHEMA)
+            await db.executescript(SCHEMA + ADVENTURE_SCHEMA)
             for statement in MIGRATIONS:
                 try:
                     await db.execute(statement)

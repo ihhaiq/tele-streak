@@ -42,9 +42,9 @@ def should_count(message: Message) -> bool:
 def matches_streak_mode(message: Message, mode: str) -> bool:
     """Return whether a countable message satisfies the chat's streak mode."""
     if mode == MODE_MESSAGE:
-        return bool(message.text)
+        return bool(getattr(message, "text", None))
     if mode == MODE_PHOTO_VIDEO:
-        return bool(message.photo or message.video)
+        return bool(getattr(message, "photo", None) or getattr(message, "video", None))
     if mode == MODE_VOICE:
-        return message.voice is not None
+        return getattr(message, "voice", None) is not None
     return False

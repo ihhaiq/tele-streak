@@ -14,11 +14,19 @@ from aiogram.exceptions import (
 )
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, Message, ReplyParameters
 
+from app.adventures.rules import Profile
+from app.adventures.views import navigation
 from app.database.repository import Repository
 from app.keyboards.streak import revive_streak_keyboard, streak_keyboard
-from app.services.rich_status import build_streak_fallback_text, build_streak_rich_message
-from app.services.streak_messages import BROKEN_NOTICE_TEXT, build_broken_notice_rich_message
+from app.services.rich_status import (
+    build_streak_fallback_text,
+    build_streak_rich_message,
+)
 from app.services.sticker_pack import StickerPack
+from app.services.streak_messages import (
+    BROKEN_NOTICE_TEXT,
+    build_broken_notice_rich_message,
+)
 from app.streak_modes import MODE_MESSAGE
 
 logger = logging.getLogger(__name__)
@@ -116,6 +124,7 @@ class StickerService:
         last_completed_day: str | None,
         streak_mode: str = MODE_MESSAGE,
         timezone_name: str | None = None,
+        adventure_profile: Profile | None = None,
     ) -> None:
         rich_message = build_streak_rich_message(
             current=current,
@@ -128,6 +137,7 @@ class StickerService:
             chat_id=chat_id,
             streak_mode=streak_mode,
             timezone_name=timezone_name,
+            adventure_profile=adventure_profile,
         )
         kwargs = dict(
             chat_id=chat_id,
@@ -172,7 +182,9 @@ class StickerService:
                 last_completed_day=last_completed_day,
                 streak_mode=streak_mode,
                 timezone_name=timezone_name,
+                adventure_profile=adventure_profile,
             ),
+            reply_markup=navigation(owner_user_id, chat_id),
         )
 
     async def _send_sticker_once(

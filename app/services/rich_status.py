@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from html import escape
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram.types import InputRichMessage
 
+from app.adventures.rules import Profile
+from app.adventures.views import progress_text, rich_buttons
 from app.streak_modes import MODE_MESSAGE, streak_mode_label
 
 DEFAULT_TIMEZONE = "Asia/Baghdad"
@@ -58,6 +61,7 @@ def build_streak_rich_message(
     chat_id: int,
     streak_mode: str = MODE_MESSAGE,
     timezone_name: str | None = DEFAULT_TIMEZONE,
+    adventure_profile: Profile | None = None,
 ) -> InputRichMessage:
     last_day = last_completed_day or "لا يوجد"
     breaks = (
@@ -68,6 +72,7 @@ def build_streak_rich_message(
     remaining = remaining_day_text(timezone_name)
     midnight_unix = end_of_day_unix(timezone_name)
     mode_label = streak_mode_label(streak_mode)
+    progress = ('<p>' + escape(progress_text(adventure_profile)).replace('\n', '<br>') + '</p>') if adventure_profile else ''
     return InputRichMessage(
         html=(
             "<h1>🔥 حالة الستريك</h1>"
@@ -81,10 +86,12 @@ def build_streak_rich_message(
             f"آخر يوم ناجح: <b>{last_day}</b><br>"
             f"وضع الستريك: <b>{mode_label}</b>"
             "</p>"
+            f"{progress}"
             "<footer>"
             f"<tg-button type=\"callback_data\" style=\"link\" data=\"streak_mode:open:{owner_user_id}:{chat_id}\">"
             "وضع الستريك"
             "</tg-button>"
+            f"{rich_buttons(owner_user_id, chat_id)}"
             "</footer>"
             "</details>"
             "<p>"
@@ -107,6 +114,7 @@ def build_streak_fallback_text(
     last_completed_day: str | None,
     streak_mode: str = MODE_MESSAGE,
     timezone_name: str | None = DEFAULT_TIMEZONE,
+    adventure_profile: Profile | None = None,
 ) -> str:
     lines = [
         "🔥 حالة الستريك",
@@ -125,4 +133,6 @@ def build_streak_fallback_text(
             f"⏳ المتبقي لنهاية اليوم: {remaining_day_text(timezone_name)}",
         ]
     )
+    if adventure_profile:
+        lines.extend(["", progress_text(adventure_profile)])
     return "\n".join(lines)

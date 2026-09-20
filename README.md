@@ -145,7 +145,9 @@ Volume; database persistence does.
 
 ## Privacy
 
-The bot does not store message text, photos, videos, or files. It stores only
+The bot does not permanently store message text, photos, videos, or files. Story
+rendering uses temporary profile photos and video files, deleted after delivery.
+It stores display names, shared progression and daily mission metadata, plus
 connection/chat identifiers, participant identifiers, daily activity dates,
 streak counters, selected pose data, and the last success-message ID.
 
@@ -156,3 +158,18 @@ The private `/start` dashboard shows Business connection status, active chats,
 current/highest streaks, completed days, Freeze usage, and the best streak chat.
 It also supports timezone selection and per-chat enable/disable, reset,
 notification mute, and automatic-Freeze controls.
+
+## Shared adventures and story video
+
+Each pair now has shared XP/level, daily missions, a friendly comparison,
+Combo bonuses, occasional events, unlockable achievements, and a number-free
+Jake celebration on the first completed day of a new streak. Open `ستريك`
+for the new buttons. Existing streak content modes still decide daily completion.
+
+`مشاركة ستوري` offers a 5- or 10-second portrait MP4 with animated Jake,
+profile-photo balls, Arabic names, the streak length, and music. Docker includes
+FFmpeg and Arabic text shaping. Set `STORY_MUSIC_PATH` to a local song if desired;
+an original instrumental celebration melody is included by default.
+
+See [the implementation and operations guide](docs/ADVENTURES.md) for the data
+model, reward rules, migration behavior, testing, and deployment checks.

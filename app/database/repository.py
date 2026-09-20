@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import secrets
 
+from app.adventures.rules import Activity
 from app.streak_modes import STREAK_MODES
 
+from . import adventure_repository as adventures
 from .engine import Database
 
 
@@ -42,6 +44,8 @@ class ActivityResult:
     duplicate: bool
     days: int
     pose_id: str | None
+    adventure_notice: bool = False
+    celebrate: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +165,7 @@ class Repository:
             "guest_streak_requests",
             "streak_revive_requests",
             "streak_start_requests",
+            *adventures.TABLES,
         ):
             await db.execute(
                 f"""
@@ -411,6 +416,8 @@ class Repository:
         today: str,
         yesterday: str,
         choose_pose: Callable[[int, str | None], str],
+        adventure: Activity | None = None,
+        qualifies: bool = True,
     ) -> ActivityResult:
         if role not in {"owner", "peer"}:
             raise ValueError("role must be owner or peer")
@@ -453,19 +460,20 @@ class Repository:
                     (peer_user_id, connection_id, chat_id),
                 )
 
-            await db.execute(
-                f"""
-                UPDATE streaks
-                SET {sender_column}=?, updated_at=?
-                WHERE business_connection_id=? AND chat_id=?
-                """,
-                (today, now, connection_id, chat_id),
-            )
+            if qualifies:
+                await db.execute(
+                    f"""
+                    UPDATE streaks
+                    SET {sender_column}=?, updated_at=?
+                    WHERE business_connection_id=? AND chat_id=?
+                    """,
+                    (today, now, connection_id, chat_id),
+                )
             cursor = await db.execute(
                 """
                 SELECT current_streak, longest_streak, completed_days,
                        break_count, last_completed_day, owner_sent_day,
-                       peer_sent_day, last_pose, is_enabled
+                       peer_sent_day, last_pose, is_enabled, freeze_count
                 FROM streaks
                 WHERE business_connection_id=? AND chat_id=?
                 """,
@@ -482,13 +490,20 @@ class Repository:
                 row["owner_sent_day"] == today
                 and row["peer_sent_day"] == today
             )
-            if already_completed or not both_sent:
+            if already_completed or not both_sent or not qualifies:
+                notice = False
+                if adventure is not None:
+                    notice, _ = await adventures.record_activity(
+                        db, (connection_id, chat_id), adventure,
+                        freeze_count=int(row["freeze_count"]),
+                    )
                 await db.commit()
                 return ActivityResult(
                     False,
                     False,
                     int(row["current_streak"]),
                     None,
+                    adventure_notice=notice,
                 )
 
             consecutive = row["last_completed_day"] == yesterday
@@ -536,8 +551,16 @@ class Repository:
                     chat_id,
                 ),
             )
+            notice, celebrate = False, False
+            if adventure is not None:
+                notice, celebrate = await adventures.record_activity(
+                    db, (connection_id, chat_id), adventure, completed=True,
+                    restarted=new_streak == 1,
+                    freeze_count=min(3, int(row["freeze_count"]) + int(completed_days % 30 == 0)),
+                )
             await db.commit()
-            return ActivityResult(True, False, new_streak, pose_id)
+            return ActivityResult(True, False, new_streak, pose_id,
+                                  adventure_notice=notice, celebrate=celebrate)
 
     async def set_success_message_id(
         self,
@@ -699,6 +722,7 @@ class Repository:
                     """,
                     (connection_id, chat_id, missed_day, now),
                 )
+                await adventures.record_rescue(db, (connection_id, chat_id), missed_day, automatic=True)
                 await db.commit()
                 return "frozen"
 
@@ -715,6 +739,7 @@ class Repository:
                 """,
                 (missed_day, today, now, connection_id, chat_id),
             )
+            await adventures.break_combo(db, (connection_id, chat_id), today)
             await db.commit()
             return "broken"
 
@@ -787,6 +812,7 @@ class Repository:
                 """,
                 (connection_id, chat_id, protected_day, now),
             )
+            await adventures.record_rescue(db, (connection_id, chat_id), protected_day, automatic=False)
             await db.commit()
             return ReviveResult(
                 "revived",
@@ -980,11 +1006,27 @@ class Repository:
                 (owner_user_id, connection_id, chat_id),
             )
             row = await cursor.fetchone()
+            if row and row['last_completed_day'] != today:
+                state = await adventures.load_day(db, (connection_id, chat_id), today)
+                if state:
+                    # المقارنة تحصي يوم المشاركة مرة واحدة حتى لو تغير الوضع.
+                    state['first'] = {}
+                    await adventures.save_day(db, (connection_id, chat_id), today, state)
             await db.commit()
             return self._streak_from_row(row) if row else None
 
     async def reset_streak(self, owner_user_id: int, chat_id: int) -> bool:
         async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            rows = await (await db.execute("""SELECT s.business_connection_id FROM streaks s JOIN business_connections b
+                ON b.business_connection_id=s.business_connection_id
+                WHERE b.owner_user_id=? AND s.chat_id=?""", (owner_user_id, chat_id))).fetchall()
+            for connection in rows:
+                key = (connection[0], chat_id)
+                profile = await adventures.load_profile(db, key, self._now()[:10])
+                profile.combo = 0
+                profile.last_good_day = None
+                await adventures.save_profile(db, key, profile)
             cursor = await db.execute(
                 """
                 UPDATE streaks SET current_streak=0, owner_sent_day=NULL,

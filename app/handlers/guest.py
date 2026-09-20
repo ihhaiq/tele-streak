@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
 import logging
 import re
+from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Router
@@ -17,17 +17,27 @@ from aiogram.types import (
     Message,
 )
 
-from app.database.revive_request_repository import ReviveApprovalState, ReviveRequestRepository
+from app.adventures.views import navigation, progress_text
 from app.database.repository import GuestStreakRequest, Repository
+from app.database.revive_request_repository import (
+    ReviveApprovalState,
+    ReviveRequestRepository,
+)
 from app.keyboards.streak import streak_keyboard
 from app.services.guest_delivery import GuestDeliveryService
-from app.services.rich_status import build_streak_fallback_text, build_streak_rich_message
+from app.services.rich_status import (
+    build_streak_fallback_text,
+    build_streak_rich_message,
+)
 from app.services.sticker_service import StickerService
-from app.services.streak_messages import BROKEN_NOTICE_TEXT, build_broken_notice_rich_message
+from app.services.streak_messages import (
+    BROKEN_NOTICE_TEXT,
+    build_broken_notice_rich_message,
+)
 
 logger = logging.getLogger(__name__)
 TOKEN_RE = re.compile(
-    r"(?:^|\s)streak:(status|success|warning_sticker|warning_notice|broken_notice|broken|revive):"
+    r"(?:^|\s)streak:(status|success|warning_sticker|warning_notice|broken_notice|broken|revive|adventure|celebration):"
     r"([A-Za-z0-9_-]{8,32})(?:\s|$)"
 )
 
@@ -152,6 +162,7 @@ def build_router(
     stickers: StickerService,
     revive_requests: ReviveRequestRepository,
     guests: GuestDeliveryService,
+    adventures=None,
 ) -> Router:
     router = Router(name="guest_messages")
 
@@ -186,7 +197,25 @@ def build_router(
             request.business_connection_id
         )
 
-        if event == "status":
+        profile = None
+        adventure_state = None
+        if adventures is not None and streak is not None and event in {"status", "adventure", "celebration"}:
+            profile, adventure_state = await adventures.snapshot(request.business_connection_id, request.chat_id)
+        if event in {"adventure", "celebration"}:
+            if adventures is None or profile is None or owner_user_id is None:
+                return
+            if event == "celebration":
+                file_id = await adventures.celebration_file_id(owner_user_id)
+                result = InlineQueryResultCachedSticker(
+                    id=f"celebration-{token}", sticker_file_id=file_id,
+                    reply_markup=navigation(owner_user_id, request.chat_id))
+            else:
+                result = InlineQueryResultArticle(
+                    id=f"adventure-{token}", title="مغامرتكم اليوم 🎉",
+                    input_message_content=InputTextMessageContent(
+                        message_text=adventure_state['latest_notice'] + "\n\n" + progress_text(profile)),
+                    reply_markup=navigation(owner_user_id, request.chat_id))
+        elif event == "status":
             if streak is None:
                 result = InlineQueryResultArticle(
                     id=f"streak-empty-{token}",
@@ -209,6 +238,7 @@ def build_router(
                             last_completed_day=streak.last_completed_day,
                             streak_mode=streak.streak_mode,
                             timezone_name=timezone_name,
+                            adventure_profile=profile,
                         ),
                     ),
                 )
@@ -224,6 +254,7 @@ def build_router(
                     chat_id=streak.chat_id,
                     streak_mode=streak.streak_mode,
                     timezone_name=timezone_name,
+                    adventure_profile=profile,
                 )
                 result = InlineQueryResultArticle(
                     id=f"streak-{token}",
@@ -374,6 +405,7 @@ def build_router(
                 fallback = InlineQueryResultArticle(
                     id=f"streak-text-{token}",
                     title="حالة الستريك",
+                    reply_markup=navigation(owner_user_id, request.chat_id) if owner_user_id else None,
                     input_message_content=InputTextMessageContent(
                         message_text=build_streak_fallback_text(
                             current=streak.current_streak,
@@ -384,6 +416,7 @@ def build_router(
                             last_completed_day=streak.last_completed_day,
                             streak_mode=streak.streak_mode,
                             timezone_name=timezone_name,
+                            adventure_profile=profile,
                         ),
                     ),
                 )

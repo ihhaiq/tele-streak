@@ -22,6 +22,7 @@ class Settings:
     message_effect_id: str | None
     sticker_set_owner_id: int | None
     sticker_set_title: str
+    story_music_path: Path | None = None
 
 
 def _optional_int(name: str) -> int | None:
@@ -47,6 +48,7 @@ def load_settings() -> Settings:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     rendered_dir.mkdir(parents=True, exist_ok=True)
 
+    story_music = os.getenv("STORY_MUSIC_PATH", "").strip()
     effect_id = os.getenv("MESSAGE_EFFECT_ID", DEFAULT_FIRE_EFFECT_ID).strip()
     return Settings(
         bot_token=token,
@@ -56,6 +58,7 @@ def load_settings() -> Settings:
         ready_stickers_dir=ready_stickers_dir,
         rendered_dir=rendered_dir,
         message_effect_id=effect_id or None,
+        story_music_path=Path(story_music) if story_music else None,
         sticker_set_owner_id=_optional_int("STICKER_SET_OWNER_ID"),
         sticker_set_title=os.getenv("STICKER_SET_TITLE", "Jake Streak").strip()
         or "Jake Streak",
