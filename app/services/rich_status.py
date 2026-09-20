@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram.types import InputRichMessage
 
-from app.services.message_filter import STREAK_MODE_LABELS
+from app.streak_modes import MODE_MESSAGE, streak_mode_label
 
 DEFAULT_TIMEZONE = "Asia/Baghdad"
 
@@ -51,7 +51,7 @@ def build_streak_rich_message(
     freeze_count: int,
     last_completed_day: str | None,
     chat_id: int,
-    streak_mode: str = "message",
+    streak_mode: str = MODE_MESSAGE,
     timezone_name: str | None = DEFAULT_TIMEZONE,
 ) -> InputRichMessage:
     last_day = last_completed_day or "لا يوجد"
@@ -62,7 +62,7 @@ def build_streak_rich_message(
     )
     remaining = remaining_day_text(timezone_name)
     midnight_unix = end_of_day_unix(timezone_name)
-    mode_label = STREAK_MODE_LABELS.get(streak_mode, STREAK_MODE_LABELS["message"])
+    mode_label = streak_mode_label(streak_mode)
     return InputRichMessage(
         html=(
             "<h1>🔥 حالة الستريك</h1>"
@@ -100,7 +100,7 @@ def build_streak_fallback_text(
     break_count: int,
     freeze_count: int,
     last_completed_day: str | None,
-    streak_mode: str = "message",
+    streak_mode: str = MODE_MESSAGE,
     timezone_name: str | None = DEFAULT_TIMEZONE,
 ) -> str:
     lines = [
@@ -116,7 +116,7 @@ def build_streak_fallback_text(
         [
             f"الحماية المتاحة: {protection_text(freeze_count)}",
             f"آخر يوم ناجح: {last_completed_day or 'لا يوجد'}",
-            f"وضع الستريك: {STREAK_MODE_LABELS.get(streak_mode, STREAK_MODE_LABELS['message'])}",
+            f"وضع الستريك: {streak_mode_label(streak_mode)}",
             f"⏳ المتبقي لنهاية اليوم: {remaining_day_text(timezone_name)}",
         ]
     )
