@@ -168,12 +168,18 @@ for the new buttons. Existing streak content modes still decide daily completion
 
 `مشاركة ستوري` offers a still story image or a 5/10-second video. The generated
 media is formatted for Telegram Business stories: 1080×1920 JPEG for photos and
-720×1280 H.265 MP4 with one-second keyframes for videos. Guest Mode sends the
-preview with a `🚀 نشر الستوري` button; only after one of the two streak
-participants presses it does the Business bot call `postStory`. Docker includes
-FFmpeg and Arabic text shaping. Set `STORY_MUSIC_PATH` to a local song for the
-video if desired; an original instrumental celebration melody is included by
-default.
+720×1280 H.265 MP4 with one-second keyframes for videos. The Business bot uploads
+the preview directly into the same chat with a `🚀 نشر الستوري` button; no
+public preview domain or Mini App is needed. Only after one of the two streak
+participants presses it does the bot call `postStory`.
+
+Video stories always get a short random music clip from YouTube. The picker
+randomly alternates between Arabic and foreign search pools, favors official
+audio/video results, rejects obvious AI/Suno/Udio, karaoke, slowed and remix
+results, and downloads only the short range needed for the 5/10-second story.
+There is deliberately no generated-melody fallback: if YouTube fails after the
+configured retries, video generation fails clearly instead of silently using the
+old synthetic track.
 
 See [the implementation and operations guide](docs/ADVENTURES.md) for the data
 model, reward rules, migration behavior, testing, and deployment checks.
@@ -181,14 +187,20 @@ model, reward rules, migration behavior, testing, and deployment checks.
 
 ### Business story publishing
 
-No Mini App is required. Railway only needs a public HTTPS domain so Telegram
-can fetch the short-lived Guest Mode preview. The bot automatically uses
-`RAILWAY_PUBLIC_DOMAIN`, or `PUBLIC_BASE_URL` can be set explicitly.
+No Mini App and no public HTTPS preview endpoint are required. The generated
+photo/video is uploaded directly by the bot on behalf of the Business account,
+with an inline `🚀 نشر الستوري` button.
 
 The connected Business account must grant the bot the
 `can_manage_stories` right. A generated preview is valid for 15 minutes by
 default (`STORY_SHARE_TTL_SECONDS`). The publish callback verifies that the
 clicker is one of the two streak participants, reserves the request atomically
 to prevent duplicate posting, checks the Business connection and permission,
-then calls Telegram `postStory`. The media remains temporary and is removed
-after expiry/replacement.
+then calls Telegram `postStory`. The original local file is removed immediately
+after a successful publish or when the request expires/replaces an older pending
+preview.
+
+YouTube extraction uses current `yt-dlp[default]` plus Deno/EJS support.
+`STORY_MUSIC_ATTEMPTS` controls retries. `STORY_YOUTUBE_COOKIE_FILE` is
+optional and can point to a cookies file when YouTube requires authenticated
+access on cloud hosting.
