@@ -112,6 +112,8 @@ class StickerService:
         break_count: int,
         freeze_count: int,
         last_completed_day: str | None,
+        chat_id: int,
+        streak_mode: str = "message",
         timezone_name: str | None = None,
     ) -> None:
         rich_message = build_streak_rich_message(
@@ -121,6 +123,8 @@ class StickerService:
             break_count=break_count,
             freeze_count=freeze_count,
             last_completed_day=last_completed_day,
+            chat_id=chat_id,
+            streak_mode=streak_mode,
             timezone_name=timezone_name,
         )
         kwargs = dict(
@@ -164,6 +168,7 @@ class StickerService:
                 break_count=break_count,
                 freeze_count=freeze_count,
                 last_completed_day=last_completed_day,
+                streak_mode=streak_mode,
                 timezone_name=timezone_name,
             ),
         )
