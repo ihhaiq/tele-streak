@@ -54,6 +54,7 @@ def build_streak_rich_message(
     break_count: int,
     freeze_count: int,
     last_completed_day: str | None,
+    owner_user_id: int,
     chat_id: int,
     streak_mode: str = MODE_MESSAGE,
     timezone_name: str | None = DEFAULT_TIMEZONE,
@@ -81,7 +82,7 @@ def build_streak_rich_message(
             f"وضع الستريك: <b>{mode_label}</b>"
             "</p>"
             "<footer>"
-            f"<tg-button type=\"callback_data\" style=\"link\" data=\"streak_mode:open:{chat_id}\">"
+            f"<tg-button type=\"callback_data\" style=\"link\" data=\"streak_mode:open:{owner_user_id}:{chat_id}\">"
             "وضع الستريك"
             "</tg-button>"
             "</footer>"
