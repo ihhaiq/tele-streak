@@ -193,6 +193,10 @@ def build_router(
                     ),
                 )
             else:
+                settings_token = await repository.ensure_streak_settings_token(
+                    request.business_connection_id,
+                    request.chat_id,
+                )
                 rich_message = build_streak_rich_message(
                     current=streak.current_streak,
                     longest=streak.longest_streak,
@@ -201,6 +205,8 @@ def build_router(
                     freeze_count=streak.freeze_count,
                     last_completed_day=streak.last_completed_day,
                     timezone_name=timezone_name,
+                    streak_mode=streak.streak_mode,
+                    settings_token=settings_token,
                 )
                 result = InlineQueryResultArticle(
                     id=f"streak-{token}",
@@ -360,6 +366,7 @@ def build_router(
                             freeze_count=streak.freeze_count,
                             last_completed_day=streak.last_completed_day,
                             timezone_name=timezone_name,
+                            streak_mode=streak.streak_mode,
                         ),
                     ),
                 )
