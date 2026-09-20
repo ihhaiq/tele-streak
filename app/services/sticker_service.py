@@ -112,7 +112,6 @@ class StickerService:
         break_count: int,
         freeze_count: int,
         last_completed_day: str | None,
-        chat_id: int,
         streak_mode: str = "message",
         timezone_name: str | None = None,
     ) -> None:
