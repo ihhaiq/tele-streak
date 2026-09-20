@@ -974,10 +974,13 @@ class Repository:
                 SELECT s.* FROM streaks AS s
                 JOIN business_connections AS b
                   ON b.business_connection_id=s.business_connection_id
-                WHERE b.owner_user_id=? AND s.chat_id=? AND b.is_enabled=1
+                WHERE b.owner_user_id=?
+                  AND s.business_connection_id=?
+                  AND s.chat_id=?
+                  AND b.is_enabled=1
                 LIMIT 1
                 """,
-                (owner_user_id, chat_id),
+                (owner_user_id, connection_id, chat_id),
             )
             row = await cursor.fetchone()
             await db.commit()
