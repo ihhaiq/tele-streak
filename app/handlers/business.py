@@ -9,6 +9,7 @@ from aiogram.types import Message
 
 from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
+from app.database.streak_mode_repository import StreakModeRepository
 from app.keyboards.streak import start_request_keyboard
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.message_filter import should_count
@@ -81,6 +82,7 @@ def build_router(
     repository: Repository,
     activations: StreakActivationRepository,
     guests: GuestDeliveryService,
+    streak_modes: StreakModeRepository,
 ) -> Router:
     router = Router(name="business_messages")
 
@@ -256,7 +258,11 @@ def build_router(
             )
             return
 
-        if not should_count(message) or not connection_id or message.from_user is None:
+        if not connection_id or message.from_user is None:
+            return
+
+        mode = await streak_modes.get_mode(connection_id, message.chat.id)
+        if not should_count(message, mode):
             return
 
         owner_id = await streaks.get_owner_id(message)
