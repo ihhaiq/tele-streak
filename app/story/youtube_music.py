@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
+import os
 import random
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,10 +68,12 @@ class YouTubeStoryMusic:
         self,
         *,
         cookie_file: Path | None = None,
+        cookies_b64: str | None = None,
         pot_provider_home: Path | None = None,
         attempts: int = 3,
     ):
-        self.cookie_file = cookie_file if cookie_file and cookie_file.is_file() else None
+        self._temporary_cookie_file: Path | None = None
+        self.cookie_file = self._resolve_cookie_file(cookie_file, cookies_b64)
         self.pot_provider_home = (
             pot_provider_home
             if pot_provider_home and pot_provider_home.is_dir()
@@ -75,6 +81,74 @@ class YouTubeStoryMusic:
         )
         self.attempts = max(1, min(int(attempts), 6))
         self._random = random.SystemRandom()
+
+    def _resolve_cookie_file(
+        self,
+        cookie_file: Path | None,
+        cookies_b64: str | None,
+    ) -> Path | None:
+        if cookies_b64:
+            compact = "".join(cookies_b64.split())
+            try:
+                raw = base64.b64decode(compact, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise RuntimeError(
+                    "STORY_YOUTUBE_COOKIES_B64 is not valid Base64"
+                ) from error
+            try:
+                text = raw.decode("utf-8-sig")
+            except UnicodeDecodeError as error:
+                raise RuntimeError(
+                    "STORY_YOUTUBE_COOKIES_B64 must contain a UTF-8 cookies.txt file"
+                ) from error
+
+            normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+            first = normalized.split("\n", 1)[0].strip()
+            if first not in {
+                "# Netscape HTTP Cookie File",
+                "# HTTP Cookie File",
+            }:
+                raise RuntimeError(
+                    "STORY_YOUTUBE_COOKIES_B64 must be a Netscape cookies.txt file"
+                )
+
+            fd, raw_path = tempfile.mkstemp(
+                prefix="streak-youtube-cookies-",
+                suffix=".txt",
+            )
+            path = Path(raw_path)
+            try:
+                os.fchmod(fd, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
+                    output.write(normalized)
+                    if not normalized.endswith("\n"):
+                        output.write("\n")
+            except Exception:
+                path.unlink(missing_ok=True)
+                raise
+            self._temporary_cookie_file = path
+            logger.info("STORY_YOUTUBE_COOKIES_READY source=railway_secret")
+            return path
+
+        if cookie_file and cookie_file.is_file():
+            logger.info("STORY_YOUTUBE_COOKIES_READY source=file")
+            return cookie_file
+
+        logger.warning("STORY_YOUTUBE_COOKIES_MISSING")
+        return None
+
+    def close(self) -> None:
+        if self._temporary_cookie_file is None:
+            return
+        try:
+            self._temporary_cookie_file.unlink(missing_ok=True)
+        except OSError:
+            logger.debug(
+                "STORY_YOUTUBE_COOKIE_CLEANUP_FAILED path=%s",
+                self._temporary_cookie_file,
+            )
+        finally:
+            self._temporary_cookie_file = None
 
     def _modes(self) -> tuple[_ClientMode, ...]:
         modes: list[_ClientMode] = []
