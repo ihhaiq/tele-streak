@@ -74,6 +74,7 @@ async def main() -> None:
         share_dir=settings.rendered_dir / "story_share",
         share_ttl_seconds=settings.story_share_ttl_seconds,
         youtube_cookie_file=settings.story_youtube_cookie_file,
+        youtube_pot_provider_home=settings.story_youtube_pot_provider_home,
         music_attempts=settings.story_music_attempts,
     )
     streak_tests = StreakTestService(repository)

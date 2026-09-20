@@ -12,11 +12,21 @@ RUN apt-get update \
         ffmpeg \
         libraqm0 \
         gosu \
+        git \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first so code edits do not invalidate the install layer.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+ARG BGUTIL_VERSION=1.3.1
+RUN git clone --depth 1 --branch "$BGUTIL_VERSION" \
+        https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git \
+        /opt/bgutil-ytdlp-pot-provider \
+    && cd /opt/bgutil-ytdlp-pot-provider/server \
+    && deno install --allow-scripts=npm:canvas --frozen \
+    && rm -rf /opt/bgutil-ytdlp-pot-provider/.git
 
 COPY . .
 

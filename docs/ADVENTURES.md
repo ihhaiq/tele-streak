@@ -97,8 +97,18 @@ preview، وماكو Public Domain مطلوب للمعاينة.
 - `STORY_MUSIC_ATTEMPTS` يحدد عدد المحاولات، و
   `STORY_YOUTUBE_COOKIE_FILE` اختياري إذا احتاج YouTube كوكيز على الاستضافة.
 
-المشروع يثبت `yt-dlp[default]` وDeno حتى يكون دعم YouTube/EJS كاملًا على
-Railway، مع FFmpeg الموجود أصلًا.
+المشروع يثبت `yt-dlp[default]` وDeno و`bgutil-ytdlp-pot-provider`.
+داخل Docker يتم تثبيت نسخة bgutil المطابقة، ويستخدم البوت الترتيب التالي:
+1) `mweb` مع PO Token مولّد تلقائيًا.
+2) `web_safari` كبديل يعتمد HLS عند توفره.
+3) `android_vr` بدون كوكيز.
+4) extractor الافتراضي كآخر محاولة.
+
+هذا مهم على Railway لأن YouTube قد يرفض IPات الاستضافة بـ403 أو bot-check.
+`STORY_YOUTUBE_POT_PROVIDER_HOME` يشير افتراضيًا إلى
+`/opt/bgutil-ytdlp-pot-provider/server`. إذا المسار مو موجود، البوت يتجاوز
+مسار PO Token ويجرب البدائل بدل ما ينهار. السجل يكتب اسم كل mode وسبب الفشل
+الحقيقي حتى يكون تشخيص مشاكل YouTube واضحًا.
 
 ### النشر
 

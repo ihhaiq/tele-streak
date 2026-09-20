@@ -45,6 +45,7 @@ class AdventureService:
         share_dir: Path | None = None,
         share_ttl_seconds: int = 900,
         youtube_cookie_file: Path | None = None,
+        youtube_pot_provider_home: Path | None = None,
         music_attempts: int = 3,
     ):
         self.bot = bot
@@ -54,6 +55,7 @@ class AdventureService:
         self.renderer = StoryRenderer()
         self.music = YouTubeStoryMusic(
             cookie_file=youtube_cookie_file,
+            pot_provider_home=youtube_pot_provider_home,
             attempts=music_attempts,
         )
         self.share_dir = Path(share_dir) if share_dir else None
@@ -277,6 +279,12 @@ class AdventureService:
                         claim_timestamp,
                     )
                     if "YouTube" in str(error):
+                        logger.warning(
+                            "STORY_YOUTUBE_PREVIEW_FAILED connection=%s chat=%s error=%s",
+                            record.business_connection_id,
+                            record.chat_id,
+                            error,
+                        )
                         return "تعذر جلب أغنية من YouTube هالمرة، جرب مرة ثانية 🎵"
                     raise
                 except Exception:

@@ -166,3 +166,74 @@ def test_youtube_failure_releases_story_rate_limit(tmp_path):
         guests.summon.assert_not_awaited()
 
     asyncio.run(run())
+
+
+def test_youtube_modes_prioritize_pot_then_fallbacks(tmp_path):
+    provider = tmp_path / "provider"
+    provider.mkdir()
+    music = YouTubeStoryMusic(
+        pot_provider_home=provider,
+        attempts=1,
+    )
+    modes = music._modes()
+    assert [mode.name for mode in modes] == [
+        "mweb-pot",
+        "web-safari",
+        "android-vr",
+        "default",
+    ]
+    assert modes[0].extractor_args["youtube"]["player_client"] == [
+        "mweb",
+        "default",
+    ]
+    assert modes[0].extractor_args["youtubepot-bgutilscript"]["server_home"] == [
+        str(provider)
+    ]
+    assert modes[2].allow_cookies is False
+
+
+def test_youtube_download_falls_back_after_pot_failure(monkeypatch, tmp_path):
+    provider = tmp_path / "provider"
+    provider.mkdir()
+    music = YouTubeStoryMusic(
+        pot_provider_home=provider,
+        attempts=1,
+    )
+    entry = {
+        "id": "abc",
+        "title": "Artist - Official Audio",
+        "duration": 180,
+        "webpage_url": "https://www.youtube.com/watch?v=abc",
+    }
+    clip = tmp_path / "clip.webm"
+    clip.write_bytes(b"audio")
+    calls = []
+
+    def fake_download(candidate, directory, duration, mode):
+        calls.append(mode.name)
+        if mode.name == "mweb-pot":
+            raise RuntimeError("HTTP Error 403")
+        return YouTubeTrack(
+            path=clip,
+            title=entry["title"],
+            webpage_url=entry["webpage_url"],
+        )
+
+    monkeypatch.setattr(music, "_download_with_mode", fake_download)
+    result = music._download_clip(entry, tmp_path, 5)
+    assert result.path == clip
+    assert calls[:2] == ["mweb-pot", "web-safari"]
+
+
+def test_youtube_base_options_skip_cookies_for_android_vr(tmp_path):
+    cookie = tmp_path / "cookies.txt"
+    cookie.write_text("# Netscape HTTP Cookie File\n")
+    provider = tmp_path / "provider"
+    provider.mkdir()
+    music = YouTubeStoryMusic(
+        cookie_file=cookie,
+        pot_provider_home=provider,
+    )
+    modes = {mode.name: mode for mode in music._modes()}
+    assert "cookiefile" in music._base_options(modes["mweb-pot"])
+    assert "cookiefile" not in music._base_options(modes["android-vr"])
