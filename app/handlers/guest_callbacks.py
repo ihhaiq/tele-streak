@@ -14,7 +14,7 @@ from aiogram.types import (
 
 from app.database.revive_request_repository import ReviveApprovalState, ReviveRequestRepository
 from app.database.repository import Repository
-from app.services.message_filter import STREAK_MODE_LABELS
+from app.streak_modes import STREAK_MODE_LABELS, STREAK_MODES
 from app.services.rich_status import build_streak_rich_message, protection_text
 
 
@@ -45,7 +45,7 @@ def _approval_keyboard(token: str) -> InlineKeyboardMarkup:
 def _mode_menu(chat_id: int, current_mode: str) -> InputRichMessage:
     labels = STREAK_MODE_LABELS
     buttons = []
-    for mode in ("message", "photo_video", "voice"):
+    for mode in STREAK_MODES:
         label = labels[mode]
         if mode == current_mode:
             buttons.append(
