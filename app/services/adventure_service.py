@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -108,9 +111,115 @@ class AdventureService:
                 await self.bot.download(file_id, destination=path)
                 return name, path
         except (TelegramAPIError, OSError, TimeoutError):
-            # الصورة المخفية أو غير المتاحة ما تمنع الستوري.
             logger.info("STORY_AVATAR_UNAVAILABLE user=%s", user_id)
         return name, None
+
+    async def _render_story_asset(self, record, owner: int, kind: str, folder: Path) -> Path:
+        profile, _ = await self.snapshot(
+            record.business_connection_id, record.chat_id
+        )
+        first, second = await asyncio.gather(
+            self._participant(
+                owner,
+                profile.stats["owner"]["name"] or "الطرف الأول",
+                folder / "owner.jpg",
+            ),
+            self._participant(
+                record.peer_user_id or record.chat_id,
+                profile.stats["peer"]["name"] or "الطرف الثاني",
+                folder / "peer.jpg",
+            ),
+        )
+        if kind == "image":
+            return await asyncio.to_thread(
+                self.renderer.render_image,
+                folder,
+                days=record.current_streak,
+                names=(first[0], second[0]),
+                photos=(first[1], second[1]),
+            )
+
+        if kind not in {"video5", "video10"}:
+            raise ValueError("unsupported story kind")
+        duration = 5 if kind == "video5" else 10
+        job = asyncio.create_task(
+            asyncio.to_thread(
+                self.renderer.render,
+                folder,
+                days=record.current_streak,
+                names=(first[0], second[0]),
+                photos=(first[1], second[1]),
+                duration=duration,
+            )
+        )
+        try:
+            return await asyncio.shield(job)
+        except asyncio.CancelledError:
+            try:
+                await job
+            finally:
+                raise
+
+    @staticmethod
+    def _cleanup_shared_files(folder: Path, max_age_seconds: int) -> None:
+        cutoff = time.time() - max_age_seconds
+        for item in folder.glob("*"):
+            try:
+                if item.is_file() and item.stat().st_mtime < cutoff:
+                    item.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("STORY_SHARE_CLEANUP_FAILED path=%s", item)
+
+    async def prepare_story_share(
+        self,
+        record,
+        owner: int,
+        kind: str,
+        token: str,
+        target: Path,
+        *,
+        max_age_seconds: int = 900,
+    ) -> str | None:
+        if record.current_streak < 1:
+            return "كملوا أول يوم حتى نسوي ستوري 🔥"
+        if kind not in {"image", "video5", "video10"}:
+            return "نوع الستوري غير مدعوم."
+        target.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            self._cleanup_shared_files,
+            target.parent,
+            max(120, max_age_seconds + 60),
+        )
+        if target.is_file():
+            return None
+        if self._story_slots.locked():
+            return "Jake دا يجهز ستوريات، جرب بعد شوي 😆"
+
+        async with self._story_slots:
+            if target.is_file():
+                return None
+            if not await self.data.claim_story(
+                record.business_connection_id,
+                record.chat_id,
+                datetime.now(timezone.utc).timestamp(),
+            ):
+                return "انتظر دقيقة بين كل ستوري والثاني 🎬"
+
+            with TemporaryDirectory(prefix="streak-story-share-") as directory:
+                rendered = await self._render_story_asset(
+                    record, owner, kind, Path(directory)
+                )
+                temporary = target.with_name(target.name + ".tmp")
+                await asyncio.to_thread(shutil.copyfile, rendered, temporary)
+                await asyncio.to_thread(os.replace, temporary, target)
+        logger.info(
+            "STORY_SHARE_READY owner=%s chat=%s kind=%s token=%s",
+            owner,
+            record.chat_id,
+            kind,
+            token[:8],
+        )
+        return None
 
     async def send_story_image(self, record, owner: int) -> str | None:
         if record.current_streak < 1:
@@ -118,9 +227,6 @@ class AdventureService:
         if self._story_slots.locked():
             return "Jake دا يجهز ستوريات، جرب بعد شوي 😆"
         async with self._story_slots:
-            profile, _ = await self.snapshot(
-                record.business_connection_id, record.chat_id
-            )
             if not await self.data.claim_story(
                 record.business_connection_id,
                 record.chat_id,
@@ -128,25 +234,8 @@ class AdventureService:
             ):
                 return "انتظر دقيقة بين كل ستوري والثاني 🖼️"
             with TemporaryDirectory(prefix="streak-story-") as directory:
-                folder = Path(directory)
-                first, second = await asyncio.gather(
-                    self._participant(
-                        owner,
-                        profile.stats["owner"]["name"] or "الطرف الأول",
-                        folder / "owner.jpg",
-                    ),
-                    self._participant(
-                        record.peer_user_id or record.chat_id,
-                        profile.stats["peer"]["name"] or "الطرف الثاني",
-                        folder / "peer.jpg",
-                    ),
-                )
-                path = await asyncio.to_thread(
-                    self.renderer.render_image,
-                    folder,
-                    days=record.current_streak,
-                    names=(first[0], second[0]),
-                    photos=(first[1], second[1]),
+                path = await self._render_story_asset(
+                    record, owner, "image", Path(directory)
                 )
                 await self.bot.send_photo(
                     chat_id=record.chat_id,
@@ -160,14 +249,13 @@ class AdventureService:
         return None
 
     async def send_story(self, record, owner: int, duration: int) -> str | None:
+        if duration not in {5, 10}:
+            return "مدة الفيديو غير مدعومة."
         if record.current_streak < 1:
             return "كملوا أول يوم حتى نسوي ستوري 🔥"
         if self._story_slots.locked():
             return "Jake دا يجهز ستوريات، جرب بعد شوي 😆"
         async with self._story_slots:
-            profile, _ = await self.snapshot(
-                record.business_connection_id, record.chat_id
-            )
             if not await self.data.claim_story(
                 record.business_connection_id,
                 record.chat_id,
@@ -175,37 +263,9 @@ class AdventureService:
             ):
                 return "انتظر دقيقة بين كل ستوري والثاني 🎬"
             with TemporaryDirectory(prefix="streak-story-") as directory:
-                folder = Path(directory)
-                first, second = await asyncio.gather(
-                    self._participant(
-                        owner,
-                        profile.stats["owner"]["name"] or "الطرف الأول",
-                        folder / "owner.jpg",
-                    ),
-                    self._participant(
-                        record.peer_user_id or record.chat_id,
-                        profile.stats["peer"]["name"] or "الطرف الثاني",
-                        folder / "peer.jpg",
-                    ),
+                path = await self._render_story_asset(
+                    record, owner, f"video{duration}", Path(directory)
                 )
-                job = asyncio.create_task(
-                    asyncio.to_thread(
-                        self.renderer.render,
-                        folder,
-                        days=record.current_streak,
-                        names=(first[0], second[0]),
-                        photos=(first[1], second[1]),
-                        duration=duration,
-                    )
-                )
-                try:
-                    path = await asyncio.shield(job)
-                except asyncio.CancelledError:
-                    # لا نمسح الملفات قبل انتهاء عامل الفيديو.
-                    try:
-                        await job
-                    finally:
-                        raise
                 await self.bot.send_video(
                     chat_id=record.chat_id,
                     business_connection_id=record.business_connection_id,
@@ -214,6 +274,9 @@ class AdventureService:
                     width=720,
                     height=1280,
                     supports_streaming=True,
-                    caption=f"🔥 ستريك متتالي لـ {record.current_streak} يوم!\nاحفظوا الفيديو وشاركوه بستوري 🎬",
+                    caption=(
+                        f"🔥 ستريك متتالي لـ {record.current_streak} يوم!\n"
+                        "احفظوا الفيديو وشاركوه بستوري 🎬"
+                    ),
                 )
         return None
