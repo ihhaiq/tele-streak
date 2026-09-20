@@ -4,7 +4,7 @@ from contextlib import suppress
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.database.revive_request_repository import ReviveApprovalState, ReviveRequestRepository
 from app.database.repository import Repository
@@ -60,6 +60,15 @@ def build_router(
                 with suppress(TelegramBadRequest):
                     await bot.edit_message_caption(
                         inline_message_id=callback.inline_message_id,
+                        caption=final_text,
+                        reply_markup=None,
+                    )
+            elif isinstance(callback.message, Message):
+                with suppress(TelegramBadRequest):
+                    await bot.edit_message_caption(
+                        chat_id=callback.message.chat.id,
+                        message_id=callback.message.message_id,
+                        business_connection_id=callback.message.business_connection_id,
                         caption=final_text,
                         reply_markup=None,
                     )
