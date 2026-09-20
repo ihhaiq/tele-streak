@@ -349,9 +349,18 @@ def empty_slot_stats() -> dict[str, Any]:
     }
 
 
-def choose_tasks(rng=None, count: int = TASKS_PER_SLOT) -> list[str]:
+def choose_tasks(
+    rng=None,
+    count: int = TASKS_PER_SLOT,
+    *,
+    exclude: set[str] | None = None,
+) -> list[str]:
     rng = rng or random.SystemRandom()
-    candidates = list(TASK_CATALOG.values())
+    excluded = exclude or set()
+    candidates = [
+        spec for spec in TASK_CATALOG.values()
+        if spec.key not in excluded
+    ]
     rng.shuffle(candidates)
 
     selected: list[TaskSpec] = []
@@ -381,8 +390,13 @@ def ensure_task_slot(state: dict, at: datetime, rng=None) -> bool:
         state.setdefault("all_bonus", False)
         return False
 
+    previous_tasks = set(state.get("tasks", ()))
     state["task_slot"] = slot
-    state["tasks"] = choose_tasks(rng, TASKS_PER_SLOT)
+    state["tasks"] = choose_tasks(
+        rng,
+        TASKS_PER_SLOT,
+        exclude=previous_tasks,
+    )
     state["done"] = []
     state["all_bonus"] = False
     state["slot_stats"] = empty_slot_stats()
