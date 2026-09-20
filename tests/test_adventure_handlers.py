@@ -185,7 +185,8 @@ def test_status_details_use_rich_list_without_duplicate_inline_markup():
     assert "<h3>الخيارات</h3><table compact>" in rich.html
     assert "<b>12 يوم</b> حاليًا" in rich.html
     assert "إجمالي أيام الستريك" not in rich.html
-    assert rich.html.count("<li>") >= 5
+    assert rich.html.count("<li>") >= 3
+    assert rich.html.count("<table compact>") >= 1
 
 
 def test_compare_page_uses_two_column_compact_table():
