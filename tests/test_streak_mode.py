@@ -91,7 +91,9 @@ def test_repository_persists_streak_mode_across_restart(tmp_path):
         assert record is not None
         assert record.streak_mode == MODE_MESSAGE
 
-        changed = await repository.set_streak_mode(10, 20, MODE_VOICE, "2026-09-20")
+        changed = await repository.set_streak_mode(
+            10, "bc-1", 20, MODE_VOICE, "2026-09-20"
+        )
         assert changed is not None
         assert changed.streak_mode == MODE_VOICE
         assert changed.owner_sent_day is None
@@ -115,7 +117,9 @@ def test_repository_rejects_unknown_streak_mode(tmp_path):
         await database.init()
         repository = Repository(database)
         with pytest.raises(ValueError):
-            await repository.set_streak_mode(1, 2, "unknown", "2026-09-20")
+            await repository.set_streak_mode(
+                1, "bc-1", 2, "unknown", "2026-09-20"
+            )
         await database.close()
 
     asyncio.run(scenario())
