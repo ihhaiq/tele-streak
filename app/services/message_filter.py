@@ -3,7 +3,7 @@ from __future__ import annotations
 from aiogram.types import Message
 
 
-def should_count(message: Message) -> bool:
+def should_count(message: Message, mode: str = "message") -> bool:
     # This MVP only tracks private Business chats.
     if message.chat.type != "private":
         return False
@@ -19,7 +19,12 @@ def should_count(message: Message) -> bool:
     if message.from_user and message.from_user.is_bot:
         return False
 
-    # Service messages do not contain normal user content. Count common human message types.
+    if mode == "media":
+        return bool(message.photo or message.video)
+    if mode == "voice":
+        return bool(message.voice)
+
+    # الوضع الافتراضي: أي رسالة بشرية معتادة تحتسب للستريك.
     return any(
         (
             message.text,
