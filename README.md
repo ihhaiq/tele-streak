@@ -51,7 +51,8 @@ Optional settings:
   packs are global and shared by all bot users; ownership never follows users.
 - `STICKER_SET_TITLE` — visible Telegram sticker-set title.
 - `STORY_MUSIC_ATTEMPTS` — YouTube search/download attempts for each story video (default 3).
-- `STORY_YOUTUBE_COOKIES_B64` — preferred Railway secret: Base64-encoded Netscape `cookies.txt`. It is decoded only to a temporary `0600` file and deleted on shutdown.
+- `STORY_YOUTUBE_COOKIES` — preferred Railway secret: paste the Netscape `cookies.txt` content exactly as exported. It is written only to a temporary `0600` file and deleted on shutdown.
+- `STORY_YOUTUBE_COOKIES_B64` — optional Base64 fallback when the platform cannot preserve multiline secrets.
 - `STORY_YOUTUBE_COOKIE_FILE` — optional local-file alternative for self-hosted deployments.
 - `STORY_YOUTUBE_POT_PROVIDER_HOME` — bgutil PO-token server directory; Docker sets this to `/opt/bgutil-ytdlp-pot-provider/server`.
 - `STORY_SHARE_TTL_SECONDS` — how long a preview can still be published (default 900 seconds).
@@ -212,18 +213,16 @@ YouTube extraction uses current `yt-dlp[default]`, Deno/EJS and the bgutil PO To
 
 If YouTube returns `Sign in to confirm you're not a bot` on Railway, PO tokens
 alone may not be enough for the datacenter IP. Export a Netscape-format
-`cookies.txt` from a browser session you control, encode the file as Base64,
-and store only the encoded value in Railway as `STORY_YOUTUBE_COOKIES_B64`.
+`cookies.txt` from a browser session you control and paste its contents directly
+into the Railway secret `STORY_YOUTUBE_COOKIES`.
 
-PowerShell example:
+The raw multiline secret is preferred. `STORY_YOUTUBE_COOKIES_B64` remains
+available only as a fallback for platforms that do not preserve multiline values.
+If both are set, `STORY_YOUTUBE_COOKIES` takes priority.
 
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt"))
-```
-
-Do not commit the cookies file or the Base64 value, and do not paste either into
-issues, logs, or chat. The bot validates the Netscape header, writes the decoded
-cookies to a random file under the OS temporary directory with mode `0600`,
+Do not commit the cookies file or either secret value, and do not paste them into
+issues, logs, or chat. The bot validates the Netscape header, writes the cookie
+content to a random file under the OS temporary directory with mode `0600`,
 passes that path to yt-dlp, and deletes the temporary file during shutdown.
 
 If YouTube still returns the bot-check after valid fresh cookies, the remaining
