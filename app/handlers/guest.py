@@ -195,6 +195,23 @@ def build_router(
                         message_text="🔥 لا يوجد ستريك مفعّل في هذه المحادثة بعد."
                     ),
                 )
+            elif owner_user_id is None:
+                result = InlineQueryResultArticle(
+                    id=f"streak-owner-missing-{token}",
+                    title="حالة الستريك",
+                    input_message_content=InputTextMessageContent(
+                        message_text=build_streak_fallback_text(
+                            current=streak.current_streak,
+                            longest=streak.longest_streak,
+                            completed_days=streak.completed_days,
+                            break_count=streak.break_count,
+                            freeze_count=streak.freeze_count,
+                            last_completed_day=streak.last_completed_day,
+                            streak_mode=streak.streak_mode,
+                            timezone_name=timezone_name,
+                        ),
+                    ),
+                )
             else:
                 rich_message = build_streak_rich_message(
                     current=streak.current_streak,
@@ -203,7 +220,7 @@ def build_router(
                     break_count=streak.break_count,
                     freeze_count=streak.freeze_count,
                     last_completed_day=streak.last_completed_day,
-                    owner_user_id=owner_user_id or 0,
+                    owner_user_id=owner_user_id,
                     chat_id=streak.chat_id,
                     streak_mode=streak.streak_mode,
                     timezone_name=timezone_name,
