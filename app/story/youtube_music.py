@@ -372,5 +372,10 @@ class YouTubeStoryMusic:
                 )
 
         detail = self._brief_error(last_error) if last_error else "unknown error"
+        if "sign in to confirm you’re not a bot" in detail.casefold() or "sign in to confirm you're not a bot" in detail.casefold():
+            logger.error(
+                "STORY_YOUTUBE_AUTH_REQUIRED cookies_configured=%s",
+                bool(self.cookie_file),
+            )
         logger.error("STORY_YOUTUBE_ALL_FAILED error=%s", detail)
         raise RuntimeError(f"تعذر جلب أغنية من YouTube: {detail}") from last_error
