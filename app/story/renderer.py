@@ -223,9 +223,14 @@ class StoryRenderer:
         if not features.check_feature("raqm"):
             raise RuntimeError("Pillow must support RAQM for Arabic text")
         directory.mkdir(parents=True, exist_ok=True)
-        output = directory / "streak-story.png"
-        story_card(days=days, names=names, photos=photos).save(
-            output, "PNG", optimize=True
+        output = directory / "streak-story.jpg"
+        card = story_card(days=days, names=names, photos=photos)
+        card.resize((1080, 1920), Image.Resampling.LANCZOS).save(
+            output,
+            "JPEG",
+            quality=92,
+            optimize=True,
+            progressive=True,
         )
         return output
 
@@ -345,15 +350,23 @@ class StoryRenderer:
                 "-map",
                 "1:a:0",
                 "-c:v",
-                "libx264",
+                "libx265",
                 "-preset",
                 "fast",
                 "-threads",
                 "2",
                 "-crf",
-                "21",
+                "27",
                 "-pix_fmt",
                 "yuv420p",
+                "-g",
+                str(FPS),
+                "-keyint_min",
+                str(FPS),
+                "-sc_threshold",
+                "0",
+                "-tag:v",
+                "hvc1",
                 "-c:a",
                 "aac",
                 "-b:a",

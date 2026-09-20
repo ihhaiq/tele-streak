@@ -12,6 +12,8 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineQueryResultArticle,
     InlineQueryResultCachedSticker,
+    InlineQueryResultPhoto,
+    InlineQueryResultVideo,
     InputRichMessageContent,
     InputTextMessageContent,
     Message,
@@ -37,18 +39,20 @@ from app.services.streak_messages import (
 
 logger = logging.getLogger(__name__)
 TOKEN_RE = re.compile(
-    r"(?:^|\s)streak:(status|success|warning_sticker|warning_notice|broken_notice|broken|revive|adventure|celebration):"
-    r"([A-Za-z0-9_-]{8,32})(?:\s|$)"
+    r"(?:^|\s)streak:(status|success|warning_sticker|warning_notice|broken_notice|broken|revive|adventure|celebration|story_preview):"
+    r"([A-Za-z0-9_-]{8,32})(?::([A-Za-z0-9_-]{8,32}))?(?:\s|$)"
 )
 
 
-def extract_streak_guest_request(text: str | None) -> tuple[str, str] | None:
+def extract_streak_guest_request(
+    text: str | None,
+) -> tuple[str, str, str | None] | None:
     if not text:
         return None
     match = TOKEN_RE.search(text)
     if match is None:
         return None
-    return match.group(1), match.group(2)
+    return match.group(1), match.group(2), match.group(3)
 
 
 def _revive_text(state: ReviveApprovalState) -> str:
@@ -171,7 +175,7 @@ def build_router(
         parsed = extract_streak_guest_request(message.text)
         if parsed is None or message.guest_query_id is None:
             return
-        event, token = parsed
+        event, token, payload = parsed
 
         request = await repository.get_guest_streak_request(token)
         if request is None:
@@ -201,7 +205,62 @@ def build_router(
         adventure_state = None
         if adventures is not None and streak is not None and event in {"status", "adventure", "celebration"}:
             profile, adventure_state = await adventures.snapshot(request.business_connection_id, request.chat_id)
-        if event in {"adventure", "celebration"}:
+        if event == "story_preview":
+            if adventures is None or payload is None:
+                return
+            preview = await adventures.story_preview(
+                payload,
+                request.business_connection_id,
+                request.chat_id,
+            )
+            if preview is None:
+                result = InlineQueryResultArticle(
+                    id=f"story-preview-expired-{token}",
+                    title="معاينة الستوري",
+                    input_message_content=InputTextMessageContent(
+                        message_text="انتهت معاينة الستوري. افتح مشاركة ستوري من جديد."
+                    ),
+                )
+            else:
+                publish_keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="🚀 نشر الستوري",
+                                callback_data=f"story_publish:{preview['token']}",
+                            )
+                        ]
+                    ]
+                )
+                caption = (
+                    f"🔥 ستريك متتالي لـ {preview['days']} يوم!\n"
+                    "إذا عجبك، اضغط «نشر الستوري» حتى ينزل على ستوري صاحب الحساب."
+                )
+                if preview["kind"] == "image":
+                    result = InlineQueryResultPhoto(
+                        id=f"story-preview-{token}",
+                        photo_url=preview["media_url"],
+                        thumbnail_url=preview["thumbnail_url"],
+                        photo_width=1080,
+                        photo_height=1920,
+                        caption=caption,
+                        reply_markup=publish_keyboard,
+                    )
+                else:
+                    duration = 5 if preview["kind"] == "video5" else 10
+                    result = InlineQueryResultVideo(
+                        id=f"story-preview-{token}",
+                        video_url=preview["media_url"],
+                        mime_type="video/mp4",
+                        thumbnail_url=preview["thumbnail_url"],
+                        title="معاينة ستوري الستريك",
+                        video_width=720,
+                        video_height=1280,
+                        video_duration=duration,
+                        caption=caption,
+                        reply_markup=publish_keyboard,
+                    )
+        elif event in {"adventure", "celebration"}:
             if adventures is None or profile is None or owner_user_id is None:
                 return
             if event == "celebration":
