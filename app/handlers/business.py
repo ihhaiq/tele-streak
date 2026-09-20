@@ -151,7 +151,6 @@ def build_router(
                         break_count=status.break_count,
                         freeze_count=status.freeze_count,
                         last_completed_day=status.last_completed_day,
-                        chat_id=message.chat.id,
                         streak_mode=record.streak_mode,
                         timezone_name=timezone_name,
                     )
