@@ -1,14 +1,33 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import ReplyParameters
 
 from app.database.repository import Repository
+from app.services.business_errors import (
+    is_business_connection_invalid,
+    is_business_transport_error,
+    telegram_business_error_code,
+)
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class GuestDeliveryResult:
+    sent: bool
+    transport_unavailable: bool = False
+    error_code: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.sent
+
+    def __str__(self) -> str:
+        return str(self.sent)
 
 
 class GuestDeliveryService:
@@ -41,7 +60,7 @@ class GuestDeliveryService:
         chat_id: int,
         reply_to_message_id: int | None = None,
         ttl_seconds: int = 60,
-    ) -> bool:
+    ) -> GuestDeliveryResult:
         username, supported = await self._identity()
         if not supported or not username:
             logger.warning(
@@ -50,7 +69,7 @@ class GuestDeliveryService:
                 connection_id,
                 chat_id,
             )
-            return False
+            return GuestDeliveryResult(False)
 
         token = await self.repository.create_guest_streak_request(
             connection_id,
@@ -65,7 +84,7 @@ class GuestDeliveryService:
                 connection_id,
                 chat_id,
             )
-            return False
+            return GuestDeliveryResult(False)
 
         try:
             summon = await self.bot.send_message(
@@ -81,14 +100,25 @@ class GuestDeliveryService:
             )
         except (TelegramBadRequest, TelegramForbiddenError) as error:
             await self.repository.finish_guest_streak_request(token)
+            transport_unavailable = is_business_transport_error(error)
+            error_code = telegram_business_error_code(error)
+            if is_business_connection_invalid(error):
+                await self.repository.disable_connection(connection_id)
             logger.warning(
-                "STREAK_GUEST_INVOKE_REJECTED event=%s connection=%s chat=%s error=%s",
+                "STREAK_GUEST_INVOKE_REJECTED event=%s connection=%s chat=%s "
+                "transport_unavailable=%s code=%s error=%s",
                 event,
                 connection_id,
                 chat_id,
+                transport_unavailable,
+                error_code,
                 error,
             )
-            return False
+            return GuestDeliveryResult(
+                False,
+                transport_unavailable=transport_unavailable,
+                error_code=error_code,
+            )
 
         await self.repository.set_guest_streak_summon_message(
             token,
@@ -101,4 +131,4 @@ class GuestDeliveryService:
             chat_id,
             summon.message_id,
         )
-        return True
+        return GuestDeliveryResult(True)
