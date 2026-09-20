@@ -19,7 +19,11 @@ from app.streak_modes import (
 )
 
 
-def build_mode_menu(chat_id: int, current_mode: str) -> InputRichMessage:
+def build_mode_menu(
+    owner_user_id: int,
+    chat_id: int,
+    current_mode: str,
+) -> InputRichMessage:
     buttons: list[str] = []
     for mode in STREAK_MODES:
         label = STREAK_MODE_LABELS.get(mode, STREAK_MODE_LABELS[MODE_MESSAGE])
@@ -30,7 +34,7 @@ def build_mode_menu(chat_id: int, current_mode: str) -> InputRichMessage:
         else:
             buttons.append(
                 '<tg-button type="callback_data" style="primary" '
-                f'data="streak_mode:set:{mode}:{chat_id}">{label}</tg-button>'
+                f'data="streak_mode:set:{mode}:{owner_user_id}:{chat_id}">{label}</tg-button>'
             )
 
     return InputRichMessage(
@@ -43,7 +47,7 @@ def build_mode_menu(chat_id: int, current_mode: str) -> InputRichMessage:
             "<footer>"
             f"الوضع الحالي: <b>{streak_mode_label(current_mode)}</b><br>"
             '<tg-button type="callback_data" style="link" '
-            f'data="streak_mode:cancel:{chat_id}">رجوع</tg-button>'
+            f'data="streak_mode:cancel:{owner_user_id}:{chat_id}">رجوع</tg-button>'
             "</footer>"
         ),
         is_rtl=True,
@@ -70,9 +74,12 @@ async def _edit_rich(
 async def _owner_streak(
     repository: Repository,
     callback: CallbackQuery,
+    owner_user_id: int,
     chat_id: int,
 ) -> StreakRecord | None:
-    return await repository.get_owner_streak(callback.from_user.id, chat_id)
+    if callback.from_user.id != owner_user_id:
+        return None
+    return await repository.get_owner_streak(owner_user_id, chat_id)
 
 
 async def _restore_status(
@@ -94,6 +101,7 @@ async def _restore_status(
             break_count=streak.break_count,
             freeze_count=streak.freeze_count,
             last_completed_day=streak.last_completed_day,
+            owner_user_id=callback.from_user.id,
             chat_id=streak.chat_id,
             streak_mode=streak.streak_mode,
             timezone_name=timezone_name,
@@ -107,12 +115,19 @@ def build_router(repository: Repository) -> Router:
     @router.callback_query(F.data.startswith("streak_mode:open:"))
     async def open_mode(callback: CallbackQuery, bot: Bot) -> None:
         try:
-            chat_id = int((callback.data or "").rsplit(":", 1)[-1])
-        except ValueError:
+            _, _, raw_owner_id, raw_chat_id = (callback.data or "").split(":", 3)
+            owner_user_id = int(raw_owner_id)
+            chat_id = int(raw_chat_id)
+        except (ValueError, IndexError):
             await callback.answer()
             return
 
-        streak = await _owner_streak(repository, callback, chat_id)
+        streak = await _owner_streak(
+            repository,
+            callback,
+            owner_user_id,
+            chat_id,
+        )
         if streak is None:
             await callback.answer(
                 "فقط صاحب الحساب يكدر يغير وضع الستريك.",
@@ -124,7 +139,7 @@ def build_router(repository: Repository) -> Router:
             edited = await _edit_rich(
                 callback,
                 bot,
-                build_mode_menu(chat_id, streak.streak_mode),
+                build_mode_menu(owner_user_id, chat_id, streak.streak_mode),
             )
         except TelegramBadRequest:
             edited = False
@@ -137,11 +152,12 @@ def build_router(repository: Repository) -> Router:
     @router.callback_query(F.data.startswith("streak_mode:set:"))
     async def set_mode(callback: CallbackQuery, bot: Bot) -> None:
         parts = (callback.data or "").split(":")
-        if len(parts) != 4:
+        if len(parts) != 5:
             await callback.answer()
             return
-        _, _, mode, raw_chat_id = parts
+        _, _, mode, raw_owner_id, raw_chat_id = parts
         try:
+            owner_user_id = int(raw_owner_id)
             chat_id = int(raw_chat_id)
         except ValueError:
             await callback.answer()
@@ -150,7 +166,12 @@ def build_router(repository: Repository) -> Router:
             await callback.answer("وضع غير صالح.", show_alert=True)
             return
 
-        current = await _owner_streak(repository, callback, chat_id)
+        current = await _owner_streak(
+            repository,
+            callback,
+            owner_user_id,
+            chat_id,
+        )
         if current is None:
             await callback.answer(
                 "فقط صاحب الحساب يكدر يغير وضع الستريك.",
@@ -162,7 +183,7 @@ def build_router(repository: Repository) -> Router:
             current.business_connection_id
         )
         streak = await repository.set_streak_mode(
-            callback.from_user.id,
+            owner_user_id,
             current.business_connection_id,
             chat_id,
             mode,
@@ -182,12 +203,19 @@ def build_router(repository: Repository) -> Router:
     @router.callback_query(F.data.startswith("streak_mode:cancel:"))
     async def cancel_mode(callback: CallbackQuery, bot: Bot) -> None:
         try:
-            chat_id = int((callback.data or "").rsplit(":", 1)[-1])
-        except ValueError:
+            _, _, raw_owner_id, raw_chat_id = (callback.data or "").split(":", 3)
+            owner_user_id = int(raw_owner_id)
+            chat_id = int(raw_chat_id)
+        except (ValueError, IndexError):
             await callback.answer()
             return
 
-        streak = await _owner_streak(repository, callback, chat_id)
+        streak = await _owner_streak(
+            repository,
+            callback,
+            owner_user_id,
+            chat_id,
+        )
         if streak is None:
             await callback.answer("تعذر فتح حالة الستريك.", show_alert=True)
             return
