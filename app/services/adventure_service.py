@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
 import aiohttp
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import (
     FSInputFile,
     InlineKeyboardButton,
@@ -21,7 +21,11 @@ from aiogram.types import (
     ReplyParameters,
 )
 
-from app.adventures.views import navigation, progress_text
+from app.adventures.views import (
+    adventure_notice_rich,
+    adventure_notice_text,
+    navigation,
+)
 from app.database.adventure_repository import AdventureRepository
 from app.story.renderer import StoryRenderer, write_celebration
 
@@ -110,12 +114,23 @@ class AdventureService:
                 )
                 if not sent:
                     profile, state = await self.snapshot(connection_id, chat_id)
-                    await self.bot.send_message(
-                        chat_id=chat_id,
-                        business_connection_id=connection_id,
-                        text=state["latest_notice"] + "\n\n" + progress_text(profile),
-                        reply_markup=navigation(owner, chat_id),
-                    )
+                    try:
+                        await self.bot.send_rich_message(
+                            chat_id=chat_id,
+                            business_connection_id=connection_id,
+                            rich_message=adventure_notice_rich(
+                                profile,
+                                state,
+                                owner,
+                                chat_id,
+                            ),
+                        )
+                    except TelegramBadRequest:
+                        await self.bot.send_message(
+                            chat_id=chat_id,
+                            business_connection_id=connection_id,
+                            text=adventure_notice_text(profile, state),
+                        )
             except Exception:
                 logger.exception("STREAK_ADVENTURE_DELIVERY_FAILED")
 
