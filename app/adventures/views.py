@@ -149,9 +149,12 @@ def page_text(profile: Profile, state: dict, page: str) -> str:
         lines.extend([EVENTS[state["event"]], ""])
     done = set(state.get("done", ()))
     for spec in active_task_specs(state):
-        mark = "✓" if spec.key in done else "○"
+        completed = spec.key in done
+        mark = "✅" if completed else "○"
         multiplier = 2 if state.get("event") == "double" else 1
         label = task_label(spec, profile.stats["owner"]["name"], profile.stats["peer"]["name"])
+        if completed:
+            label = f"~~{label}~~"
         lines.append(f"{mark} {label} · {spec.xp * multiplier} XP")
     bonus = ALL_TASKS_BONUS_XP * (2 if state.get("event") == "double" else 1)
     lines.extend(["", f"إكمال الـ6: +{bonus} XP", "تتجدد كل 6 ساعات"])
@@ -211,12 +214,21 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
     rows: list[str] = []
 
     for spec in active_task_specs(state):
-        mark = "✓" if spec.key in done else "○"
-        label = task_label(spec, profile.stats["owner"]["name"], profile.stats["peer"]["name"])
+        completed = spec.key in done
+        mark = "✅" if completed else "○"
+        label = escape(
+            task_label(
+                spec,
+                profile.stats["owner"]["name"],
+                profile.stats["peer"]["name"],
+            )
+        )
+        if completed:
+            label = f"<s>{label}</s>"
         rows.append(
             "<tr>"
             f"<td align=\"center\">{mark}</td>"
-            f"<td>{escape(label)}</td>"
+            f"<td>{label}</td>"
             f"<td align=\"center\"><b>{spec.xp * multiplier}</b></td>"
             "</tr>"
         )
