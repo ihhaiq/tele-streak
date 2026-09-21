@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.database.channel_repository import ChannelStreakRepository
+from app.handlers.channel import build_router as channel_router
 from app.database.engine import Database
 from app.services.channel_streak_service import ChannelStreakService
 from app.services.channel_permissions import can_manage_channel_story, channel_status_text
@@ -42,6 +43,79 @@ async def test_channel_one_post_per_day_and_duplicate_does_not_increment(tmp_pat
                 assert (await (await conn.execute(f"SELECT COUNT(*) FROM {table}")).fetchone())[0] == 0
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_channel_completion_sends_numbered_sticker_and_first_day_celebration():
+    repo = SimpleNamespace(
+        activate=AsyncMock(),
+        get=AsyncMock(),
+    )
+    streaks = SimpleNamespace(
+        timezone=SimpleNamespace(key="UTC"),
+        register_post=AsyncMock(),
+    )
+    stickers = SimpleNamespace(
+        send_channel_success=AsyncMock(),
+        send_channel_celebration=AsyncMock(),
+    )
+    handler = channel_router(repo, streaks, stickers).channel_post.handlers[0].callback
+    post = SimpleNamespace(
+        text="منشور عادي",
+        chat=SimpleNamespace(id=77, type="channel"),
+    )
+
+    streaks.register_post.return_value = (
+        SimpleNamespace(current_streak=1),
+        True,
+    )
+    await handler(post)
+    stickers.send_channel_success.assert_awaited_once_with(
+        chat_id=77,
+        days=1,
+    )
+    stickers.send_channel_celebration.assert_awaited_once_with(chat_id=77)
+
+    stickers.send_channel_success.reset_mock()
+    stickers.send_channel_celebration.reset_mock()
+    streaks.register_post.return_value = (
+        SimpleNamespace(current_streak=2),
+        True,
+    )
+    await handler(post)
+    stickers.send_channel_success.assert_awaited_once_with(
+        chat_id=77,
+        days=2,
+    )
+    stickers.send_channel_celebration.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_channel_duplicate_post_sends_no_sticker():
+    repo = SimpleNamespace(
+        activate=AsyncMock(),
+        get=AsyncMock(),
+    )
+    streaks = SimpleNamespace(
+        timezone=SimpleNamespace(key="UTC"),
+        register_post=AsyncMock(
+            return_value=(SimpleNamespace(current_streak=4), False)
+        ),
+    )
+    stickers = SimpleNamespace(
+        send_channel_success=AsyncMock(),
+        send_channel_celebration=AsyncMock(),
+    )
+    handler = channel_router(repo, streaks, stickers).channel_post.handlers[0].callback
+    post = SimpleNamespace(
+        text="منشور ثاني بنفس اليوم",
+        chat=SimpleNamespace(id=77, type="channel"),
+    )
+
+    await handler(post)
+
+    stickers.send_channel_success.assert_not_awaited()
+    stickers.send_channel_celebration.assert_not_awaited()
 
 
 @pytest.mark.asyncio
