@@ -163,12 +163,17 @@ def test_task_navigation_renders_latest_completed_state():
         )
         bot = SimpleNamespace(edit_message_text=AsyncMock())
         router = build_router(repo, adventures)
-
-        await router.callback_query.handlers[0].callback(
-            callback(10, "adv:tasks:10:20"),
-            bot,
+        query = SimpleNamespace(
+            data="adv:tasks:10:20",
+            from_user=SimpleNamespace(id=10),
+            inline_message_id="inline",
+            message=None,
+            answer=AsyncMock(),
         )
 
+        await router.callback_query.handlers[0].callback(query, bot)
+
+        query.answer.assert_awaited_once()
         adventures.snapshot.assert_awaited_once()
         rich = bot.edit_message_text.await_args.kwargs["rich_message"]
         assert "<s>حسين يرسل 1 رسالة نصية</s>" in rich.html
