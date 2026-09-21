@@ -4,7 +4,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 FPS = 30
 RIG_SUPERSAMPLE = 1.25
@@ -55,6 +55,9 @@ class JakePose:
     heel_lift: tuple[float, float] = (0.0, 0.0)
     hip_sway: float = 0.0
     pose_name: str = "idle"
+    jump_height: float = 0.0
+    jump_velocity: float = 0.0
+    landing_impact: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,6 +339,54 @@ def _blink_amount(t: float) -> float:
     return max(_pulse(phase, c - 0.11, c, c + 0.15) for c in (1.75, 3.65))
 
 
+def _jump_state(t: float, *, days: int, duration: int) -> tuple[float, float, float]:
+    """Return height, upward velocity and landing compression for a real ballistic hop."""
+    start = 0.82
+    cycle = 0
+    best_height = 0.0
+    best_velocity = 0.0
+    landing_impact = 0.0
+    style = milestone_style(days)
+
+    while True:
+        flight, rise = _flight_parameters(cycle=cycle, days=days, duration=duration)
+        if start + 0.64 + flight > duration - 0.50:
+            break
+
+        # قفزة قصيرة مرتبطة بأول رمية من كل دورة حتى ما يصير نط مستمر ومصطنع.
+        takeoff = start + 0.03
+        high_toss = duration >= 10 and cycle % 4 == 2
+        airtime = 0.54 if high_toss else 0.48
+        peak = 27.0 if high_toss else 19.0
+        if style.enabled:
+            peak *= min(1.16, style.finale_scale + 0.04)
+        # ارتفاع الرمية يؤثر قليلًا على القفزة، مع سقف حتى تبقى الحركة كارتونية ومقنعة.
+        peak *= min(1.12, max(0.94, rise / 185.0))
+        peak = min(31.0, peak)
+
+        tau = t - takeoff
+        gravity = 8.0 * peak / (airtime * airtime)
+        launch_velocity = gravity * airtime / 2.0
+        if 0.0 <= tau <= airtime:
+            height = launch_velocity * tau - 0.5 * gravity * tau * tau
+            if height > best_height:
+                best_height = max(0.0, height)
+                best_velocity = launch_velocity - gravity * tau
+
+        landed_for = t - (takeoff + airtime)
+        if 0.0 <= landed_for <= 0.24:
+            impact = (
+                math.exp(-9.0 * landed_for)
+                * (0.5 + 0.5 * math.cos(math.pi * landed_for / 0.24))
+            )
+            landing_impact = max(landing_impact, impact)
+
+        start += flight + 0.34
+        cycle += 1
+
+    return best_height, best_velocity, landing_impact
+
+
 def motion_layout(t: float, *, days: int, duration: int) -> MotionLayout:
     t = max(0.0, min(float(duration), float(t)))
     balls = tuple(ball_motion(t, i, days=days, duration=duration) for i in range(2))
@@ -362,8 +413,14 @@ def motion_layout(t: float, *, days: int, duration: int) -> MotionLayout:
 
     finale = smoothstep((t - (duration - 0.55)) / 0.30)
     active = 1.0 - finale
-    squat = min(1.0, anticipation + 0.55 * catch) * active
-    stretch = min(1.0, release) * active
+    jump_height, jump_velocity, landing_impact = _jump_state(
+        t, days=days, duration=duration
+    )
+    jump_height *= active
+    jump_velocity *= active
+    landing_impact *= active
+    squat = min(1.0, anticipation + 0.55 * catch + 0.70 * landing_impact) * active
+    stretch = min(1.0, release + 0.18 * max(0.0, jump_velocity) / 120.0) * active
     # Follow both balls continuously; no abrupt choice of an active ball.
     gaze_x = sum(ball.center[0] - 360 for ball in balls) / 310
     gaze_y = sum(ball.center[1] - HAND_Y for ball in balls) / 400
@@ -388,7 +445,8 @@ def motion_layout(t: float, *, days: int, duration: int) -> MotionLayout:
             hand_offsets=tuple((x * active, y * active) for x, y in hands),
             blink=_blink_amount(t) * active,
             smile=0.25 + 0.4 * excited + (0.65 if milestone else 0.5) * finale,
-            mouth_open=0.35 * excited + (0.80 if milestone else 0.5) * finale,
+            # الفم يبقى مثل الرسم الأصلي؛ ما نعيد رسمه وما نحركه.
+            mouth_open=0.0,
             gaze=(
                 max(-1.0, min(1.0, gaze_x)) * active,
                 max(-1.0, min(0.2, gaze_y)) * active,
@@ -396,8 +454,11 @@ def motion_layout(t: float, *, days: int, duration: int) -> MotionLayout:
             squat=squat,
             stretch=stretch,
             heel_lift=tuple(min(3.0, h) * active for h in heels),
-            hip_sway=1.8 * lean * active,
+            hip_sway=(1.8 * lean + 0.007 * jump_velocity) * active,
             pose_name=pose_name,
+            jump_height=jump_height,
+            jump_velocity=jump_velocity,
+            landing_impact=landing_impact,
         ),
         balls,
     )
@@ -666,20 +727,8 @@ class JakeRig:
         draw = ImageDraw.Draw(image)
         for left, top, right, bottom in self.landmarks.eye_boxes:
             cx, cy = (left + right) / 2, (top + bottom) / 2
-            rx, ry = (right - left) / 2, (bottom - top) / 2
-            if self.celebration:
-                # Keep the existing eye outline and muzzle; redraw only the interior.
-                draw.ellipse(
-                    (left + 3, top + 3, right - 3, bottom - 3),
-                    fill=(255, 253, 241, 255),
-                )
-                px = cx + pose.gaze[0] * rx * 0.30
-                py = cy + pose.gaze[1] * ry * 0.30
-                radius = rx * 0.22
-                draw.ellipse(
-                    (px - radius, py - radius, px + radius, py + radius),
-                    fill=(30, 25, 19, 255),
-                )
+            # عين Jake بهذي الوضعية جزء من الرسم الأصلي: بياض كامل وحد أسود.
+            # لا نرسم pupil ولا نغطي داخل العين؛ هذا كان يغير شكله عن المرجع.
             if pose.blink > 0:
                 # Compress the complete eye continuously, instead of switching to a line.
                 box = (left, top, right, bottom)
@@ -693,52 +742,7 @@ class JakeRig:
                 eye_h = max(2, round((bottom - top) * (1 - 0.94 * pose.blink)))
                 eye = eye.resize((right - left, eye_h), Image.Resampling.LANCZOS)
                 image.alpha_composite(eye, (left, round(cy - eye_h / 2)))
-        if self.celebration:
-            sx, sy = image.width / 420, image.height / 420
-            # The patch stays below the muzzle and does not touch the nose.
-            mask = Image.new("L", image.size)
-            ImageDraw.Draw(mask).polygon(
-                [
-                    (round(x * sx), round(y * sy))
-                    for x, y in (
-                        (201, 150),
-                        (237, 150),
-                        (240, 162),
-                        (235, 175),
-                        (222, 180),
-                        (208, 177),
-                        (200, 165),
-                    )
-                ],
-                fill=255,
-            )
-            mask = mask.filter(ImageFilter.GaussianBlur(max(0.5, sx)))
-            skin = Image.new("RGBA", image.size, (252, 191, 24, 253))
-            skin_draw = ImageDraw.Draw(skin)
-            for y in range(round(148 * sy), round(183 * sy)):
-                color = self.source.getpixel((round(246 * sx), y))
-                skin_draw.line((round(197 * sx), y, round(242 * sx), y), fill=color)
-            image = Image.composite(skin, image, mask)
-            draw = ImageDraw.Draw(image)
-            width = (25 + 7 * pose.smile) * sx
-            cx, top = 219 * sx, 148 * sy
-            depth = (7 + 24 * pose.mouth_open) * sy
-            box = (cx - width / 2, top, cx + width / 2, top + depth)
-            if pose.mouth_open > 0.08:
-                draw.ellipse(box, fill=(44, 24, 20, 255))
-                draw.ellipse(
-                    (
-                        cx - width * 0.24,
-                        top + depth * 0.60,
-                        cx + width * 0.24,
-                        top + depth * 0.94,
-                    ),
-                    fill=(235, 100, 111, 255),
-                )
-            else:
-                draw.arc(
-                    box, 0, 180, fill=(44, 24, 20, 255), width=max(2, round(2 * sx))
-                )
+        # الفم يبقى من الأصل بدون patch أو redraw؛ فقط العينين تتغيرن.
         return image
 
     def placement(

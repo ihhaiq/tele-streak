@@ -393,8 +393,13 @@ class StoryRenderer:
                     )
 
             actor = rig.render(t, layout.jake)
-            shadow_width = round(225 - 3 * layout.jake.stretch + 4 * layout.jake.squat)
+            jump_ratio = min(1.0, layout.jake.jump_height / 32.0)
+            shadow_width = round(
+                (225 - 3 * layout.jake.stretch + 4 * layout.jake.squat)
+                * (1.0 - 0.24 * jump_ratio)
+            )
             shadow_y = 990
+            shadow_alpha = round(145 * (1.0 - 0.42 * jump_ratio))
             draw.ellipse(
                 (
                     360 - shadow_width // 2,
@@ -402,9 +407,12 @@ class StoryRenderer:
                     360 + shadow_width // 2,
                     shadow_y + 10,
                 ),
-                fill=(12, 16, 34, 145),
+                fill=(12, 16, 34, shadow_alpha),
             )
-            image.alpha_composite(actor, rig.placement(actor))
+            image.alpha_composite(
+                actor,
+                rig.placement(actor, floor_y=990.0 - layout.jake.jump_height),
+            )
 
             # الكرة الأمامية تنرسم بعد الشخصية، فيصير occlusion حقيقي بدل طبقة واحدة.
             for index, (ball, motion) in enumerate(zip(balls, layout.balls)):
