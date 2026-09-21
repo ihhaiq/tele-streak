@@ -58,7 +58,7 @@ class AdventureService:
         if self.share_dir is not None:
             self.share_dir.mkdir(parents=True, exist_ok=True)
         self.share_ttl_seconds = max(60, min(int(share_ttl_seconds), 3600))
-        self._story_slots = asyncio.Semaphore(2)
+        self._story_slots = asyncio.Semaphore(1)
         self._celebration_lock = asyncio.Lock()
 
     async def snapshot(self, connection_id, chat_id):
@@ -189,14 +189,14 @@ class AdventureService:
         )
         names = (first[0], second[0])
         photos = (first[1], second[1])
-        cover = await asyncio.to_thread(
-            self.renderer.render_image,
-            folder,
-            days=record.current_streak,
-            names=names,
-            photos=photos,
-        )
         if kind == "image":
+            cover = await asyncio.to_thread(
+                self.renderer.render_image,
+                folder,
+                days=record.current_streak,
+                names=names,
+                photos=photos,
+            )
             return cover, cover, None
         if kind not in {"video5", "video10"}:
             raise ValueError("unsupported story kind")
@@ -224,7 +224,7 @@ class AdventureService:
                 await job
             finally:
                 raise
-        return video, cover, "الأغنية المضافة" if music_path else None
+        return video, video, "الأغنية المضافة" if music_path else None
 
     async def begin_music_upload(self, token: str, user_id: int) -> str | None:
         request = await self.data.get_story_publish_request(token)
@@ -390,14 +390,8 @@ class AdventureService:
                 asset_id = secrets.token_hex(10)
                 media_suffix = ".jpg" if kind == "image" else ".mp4"
                 media_target = self.share_dir / f"{asset_id}{media_suffix}"
-                thumb_target = (
-                    media_target
-                    if kind == "image"
-                    else self.share_dir / f"{asset_id}-thumb.jpg"
-                )
+                thumb_target = media_target
                 await asyncio.to_thread(shutil.copyfile, media, media_target)
-                if kind != "image":
-                    await asyncio.to_thread(shutil.copyfile, thumbnail, thumb_target)
 
             request, old_paths = await self.data.create_story_publish_request(
                 connection_id=record.business_connection_id,
@@ -437,15 +431,16 @@ class AdventureService:
                     music_buttons,
                 ]
             )
-            caption = (
-                f"🔥 ستريك متتالي لـ {record.current_streak} يوم!\n"
-                + (f"🎵 {music_title}\n" if music_title else "")
-                + "\nهاي معاينة الستوري. النشر متاح فقط لصاحب حساب الـBusiness."
+            text = (
+                "✅ تم تجهيز الستوري\n"
+                f"🔥 الستريك: {record.current_streak} يوم\n"
+                + ("🎵 تمت إضافة الأغنية\n" if request.music_file_id else "")
+                + "\nتگدر تغيّر الأغنية أو تنشر الستوري من الزر أدناه."
             )
             destination = {
                 "chat_id": record.chat_id,
                 "business_connection_id": record.business_connection_id,
-                "caption": caption,
+                "text": text,
                 "reply_markup": keyboard,
             }
             if reply_to_message_id is not None:
@@ -454,21 +449,7 @@ class AdventureService:
                 )
 
             try:
-                if kind == "image":
-                    await self.bot.send_photo(
-                        **destination,
-                        photo=FSInputFile(media_target, filename="streak-story.jpg"),
-                    )
-                else:
-                    duration = 5 if kind == "video5" else 10
-                    await self.bot.send_video(
-                        **destination,
-                        video=FSInputFile(media_target, filename="streak-story.mp4"),
-                        duration=duration,
-                        width=720,
-                        height=1280,
-                        supports_streaming=True,
-                    )
+                await self.bot.send_message(**destination)
             except Exception:
                 paths = await self.data.delete_story_publish_request(request.token)
                 await asyncio.to_thread(self._unlink_paths, paths)
