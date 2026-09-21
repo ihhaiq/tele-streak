@@ -107,13 +107,22 @@ class AdventureService:
                     )
             except Exception:
                 logger.exception("STREAK_CELEBRATION_DELIVERY_FAILED")
-        if completion.adventure_notice and record.task_notifications_enabled:
+        if completion.adventure_notice:
+            notice_snapshot = None
+            if not record.task_notifications_enabled:
+                notice_snapshot = await self.snapshot(connection_id, chat_id)
+                if notice_snapshot[1].get("latest_notice_kind") == "task":
+                    return
             try:
                 sent = await self.guests.summon(
                     event="adventure", connection_id=connection_id, chat_id=chat_id
                 )
                 if not sent:
-                    profile, state = await self.snapshot(connection_id, chat_id)
+                    profile, state = (
+                        notice_snapshot
+                        if notice_snapshot is not None
+                        else await self.snapshot(connection_id, chat_id)
+                    )
                     try:
                         await self.bot.send_rich_message(
                             chat_id=chat_id,
