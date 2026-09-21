@@ -106,7 +106,7 @@ async def test_success_rejection_refreshes_sticker_and_cleans_summon():
     pack = SimpleNamespace(
         cached_file_id=Mock(return_value=None),
         invalidate_cached_file_id=Mock(),
-        file_id=AsyncMock(return_value="fresh-file-id"),
+        refresh_numbered_file_id=AsyncMock(return_value="fresh-file-id"),
     )
     stickers = SimpleNamespace(pack=pack)
 
@@ -149,7 +149,7 @@ async def test_success_rejection_falls_back_to_text_when_refresh_fails():
     pack = SimpleNamespace(
         cached_file_id=Mock(return_value=None),
         invalidate_cached_file_id=Mock(),
-        file_id=AsyncMock(return_value=None),
+        refresh_numbered_file_id=AsyncMock(return_value=None),
     )
     stickers = SimpleNamespace(pack=pack)
 
