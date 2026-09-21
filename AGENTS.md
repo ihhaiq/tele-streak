@@ -10,6 +10,7 @@
 ## توزيع الملفات
 
 - `app/adventures/`: المهام، القواعد، وصفحات المغامرة.
+- `app/adventures/achievements.py`: تعريف الإنجازات وقواعد فتحها.
 - `app/services/adventure_service.py`: تنسيق التدفق فقط؛ الرندر في `app/story/renderer.py`.
 - `app/database/`: الجداول والمستودعات والترقيات التلقائية.
 - `app/handlers/`: استقبال أوامر Telegram والـ callbacks، بدون منطق قاعدة بيانات طويل.
