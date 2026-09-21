@@ -537,6 +537,14 @@ class AdventureService:
             raise RuntimeError("Telegram returned story without an id")
         return story_id
 
+    async def story_publish_access(self, token: str, user_id: int) -> str:
+        request = await self.data.get_story_publish_request(token)
+        if request is None:
+            return "expired"
+        if user_id != request.owner_user_id:
+            return "owner_only"
+        return "ready"
+
     async def publish_story(
         self,
         token: str,
