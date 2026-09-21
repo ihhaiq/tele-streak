@@ -41,4 +41,7 @@ class ChannelStreakService:
                       getattr(getattr(message, "from_user", None), "full_name", None) or
                       "ناشر القناة")
             day = datetime.now(self.timezone).date().isoformat()
-            return await self.repository.record_post(message.chat.id, day, author)
+            return await self.repository.record_post(
+                message.chat.id, day, author,
+                getattr(getattr(message, "from_user", None), "id", None),
+            )

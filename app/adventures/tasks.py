@@ -324,6 +324,18 @@ def _build_catalog() -> dict[str, TaskSpec]:
 TASK_CATALOG = _build_catalog()
 
 
+def task_label(spec: TaskSpec, owner_name: str | None, peer_name: str | None) -> str:
+    owner, peer = owner_name or "الطرف الأول", peer_name or "الطرف الثاني"
+    if spec.role:
+        # نبدل بادئة الوصف فقط حتى يبقى اسم الحساب كما هو.
+        return (owner if spec.role == "owner" else peer) + spec.label[len(_role_name(spec.role)):]
+    if spec.rule == "pair_kind":
+        return f"{owner} {_kind_name(spec.kind)} · {peer} {_kind_name(spec.other_kind)}"
+    if spec.rule == "split_messages":
+        return f"{owner} {spec.target} رسالة · {peer} {spec.other_target} رسالة"
+    return f"{owner} و{peer}: {spec.label}"
+
+
 def task_slot(at: datetime) -> str:
     return f"{at.date().isoformat()}:{at.hour // SLOT_HOURS}"
 

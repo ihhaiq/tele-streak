@@ -19,7 +19,7 @@ def build_router(repository: ChannelStreakRepository, streaks: ChannelStreakServ
             return
         if text in {"ستريك", "/ستريك", "streak", "/streak"}:
             streak = await repository.get(message.chat.id)
-            await message.answer(channel_status_text(streak))
+            await message.answer(channel_status_text(streak, streaks.timezone.key))
             return
         await streaks.register_post(message)
 

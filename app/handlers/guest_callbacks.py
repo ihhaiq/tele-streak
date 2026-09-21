@@ -154,8 +154,11 @@ def build_router(
             return
 
         if not approval.ready:
-            owner_name = await user_label(bot, state.owner_user_id, "الطرف الأول")
-            peer_name = await user_label(bot, state.peer_user_id, "الطرف الثاني")
+            record = await repository.get_streak(state.business_connection_id, state.chat_id)
+            names = await repository.participant_status(record) if record else {}
+            owner_name = await user_label(bot, state.owner_user_id, names.get("owner_name") or "الطرف الأول", repository)
+            peer_name = await user_label(bot, state.peer_user_id, names.get("peer_name") or "الطرف الثاني", repository)
+            waiting_name = peer_name if state.owner_approved else owner_name
             if callback.inline_message_id:
                 with suppress(TelegramBadRequest):
                     await bot.edit_message_text(
@@ -164,9 +167,9 @@ def build_router(
                         reply_markup=_approval_keyboard(token),
                     )
             await callback.answer(
-                f"تم تسجيل موافقتك. بانتظار موافقة {peer_name}."
+                f"تم تسجيل موافقتك. بانتظار موافقة {waiting_name}."
                 if approval.status == "approved"
-                else f"موافقتك مسجلة مسبقًا. بانتظار {peer_name}.",
+                else f"موافقتك مسجلة مسبقًا. بانتظار {waiting_name}.",
                 show_alert=True,
             )
             return

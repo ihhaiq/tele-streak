@@ -14,6 +14,11 @@ SCHEMA = """
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 
+CREATE TABLE IF NOT EXISTS participant_accounts (
+    user_id INTEGER PRIMARY KEY,
+    display_name TEXT
+);
+
 CREATE TABLE IF NOT EXISTS business_connections (
     business_connection_id TEXT PRIMARY KEY,
     owner_user_id INTEGER NOT NULL,
@@ -31,6 +36,7 @@ CREATE TABLE IF NOT EXISTS channel_streaks (
     break_count INTEGER NOT NULL DEFAULT 0,
     last_completed_day TEXT,
     last_completed_by TEXT,
+    last_completed_by_user_id INTEGER,
     is_enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -46,6 +52,9 @@ CREATE TABLE IF NOT EXISTS streaks (
     completed_days INTEGER NOT NULL DEFAULT 0,
     break_count INTEGER NOT NULL DEFAULT 0,
     last_completed_day TEXT,
+    last_contributor_user_id INTEGER,
+    last_contributor_name TEXT,
+    last_contribution_day TEXT,
     owner_sent_day TEXT,
     peer_sent_day TEXT,
     last_pose TEXT,
@@ -184,6 +193,10 @@ PRAGMAS = (
 
 
 MIGRATIONS = (
+    "ALTER TABLE streaks ADD COLUMN last_contributor_user_id INTEGER",
+    "ALTER TABLE streaks ADD COLUMN last_contributor_name TEXT",
+    "ALTER TABLE streaks ADD COLUMN last_contribution_day TEXT",
+    "ALTER TABLE channel_streaks ADD COLUMN last_completed_by_user_id INTEGER",
     "ALTER TABLE story_publish_requests ADD COLUMN music_file_id TEXT",
     "ALTER TABLE story_publish_requests ADD COLUMN music_uploader_id INTEGER",
     "ALTER TABLE business_connections ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Baghdad'",

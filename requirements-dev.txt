@@ -1,5 +1,6 @@
 -r requirements.txt
 pytest>=8.0,<9.0
+pytest-asyncio>=0.24,<2.0
 # Only needed by tools/upscale_stickers.py, never at runtime.
 numpy>=2.0,<3.0
 scipy>=1.13,<2.0

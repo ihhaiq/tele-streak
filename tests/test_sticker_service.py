@@ -51,6 +51,9 @@ class FakeRepository:
     def __init__(self, resolved: str | None = None):
         self.resolved = resolved
 
+    async def get_streak(self, *args):
+        return None
+
     async def resolve_active_connection_id(self, connection_id: str):
         return self.resolved or connection_id
 

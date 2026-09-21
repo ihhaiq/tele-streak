@@ -12,6 +12,7 @@ from aiogram.types import Message
 from app.adventures.rules import Activity
 from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
+from app.database.participants import account_name
 from app.services.message_filter import matches_streak_mode
 from app.stickers.poses import PoseCatalog
 
@@ -94,6 +95,9 @@ class StreakService:
         connection_id = connection_id or message.business_connection_id
         if not connection_id:
             return None
+        for account in (message.from_user, message.chat):
+            if account is not None:
+                await self.repository.remember_account(account.id, account_name(account))
         cached = self._owner_cache.get(connection_id)
         if cached is not None:
             self._owner_cache.move_to_end(connection_id)
@@ -104,6 +108,7 @@ class StreakService:
             return owner_id
         try:
             connection = await message.bot.get_business_connection(connection_id)
+            await self.repository.remember_account(connection.user.id, account_name(connection.user))
             await self.repository.upsert_connection(
                 connection_id=connection.id,
                 owner_user_id=connection.user.id,
@@ -202,6 +207,7 @@ class StreakService:
                         yesterday=yesterday,
                         choose_pose=lambda days, last_pose: self.poses.choose(days, last_pose).id,
                         adventure=activity, qualifies=qualifies,
+                        sender_name=account_name(message.from_user),
                     )
                     completion = Completion(
                         completed=result.completed,
@@ -242,6 +248,7 @@ class StreakService:
                     adventure=Activity(
                         at=datetime.now(ZoneInfo(await self.repository.get_connection_timezone(connection_id) or self.tz.key)),
                         role="owner",
+                        name=account_name(message.from_user) or "",
                     ),
                 )
                 completion = Completion(

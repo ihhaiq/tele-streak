@@ -109,7 +109,17 @@ def test_approved_peer_request_counts_peer_then_waits_for_owner(tmp_path):
     asyncio.run(scenario())
 
 
-def test_stale_message_connection_can_use_latest_owner_connection(tmp_path):
+def test_stale_message_connection_can_use_latest_owner_connection(tmp_path, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import app.services.streak_service as module
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 18, 12, tzinfo=ZoneInfo("Asia/Baghdad")).astimezone(tz)
+
+    monkeypatch.setattr(module, "datetime", Clock)
     async def scenario():
         database = Database(tmp_path / "test.db")
         await database.init()
