@@ -143,6 +143,40 @@ def test_nonmatching_media_reaches_tasks_and_keeps_success_flow():
     asyncio.run(run())
 
 
+def test_task_navigation_renders_latest_completed_state():
+    async def run():
+        profile = Profile()
+        profile.stats["owner"]["name"] = "حسين"
+        profile.stats["peer"]["name"] = "أحمد"
+        daily = {
+            "tasks": ["owner_texts_1", "peer_photo_1"],
+            "done": ["owner_texts_1"],
+            "event": "",
+            "all_bonus": False,
+        }
+        record = SimpleNamespace(peer_user_id=30, chat_id=20)
+        repo = SimpleNamespace(
+            get_owner_streak=AsyncMock(return_value=record),
+        )
+        adventures = SimpleNamespace(
+            snapshot=AsyncMock(return_value=(profile, daily)),
+        )
+        bot = SimpleNamespace(edit_message_text=AsyncMock())
+        router = build_router(repo, adventures)
+
+        await router.callback_query.handlers[0].callback(
+            callback(10, "adv:tasks:10:20"),
+            bot,
+        )
+
+        adventures.snapshot.assert_awaited_once()
+        rich = bot.edit_message_text.await_args.kwargs["rich_message"]
+        assert "<s>حسين يرسل 1 رسالة نصية</s>" in rich.html
+        assert "<s>أحمد يرسل 1 صورة</s>" not in rich.html
+
+    asyncio.run(run())
+
+
 def test_sticker_page_requests_new_message_when_text_edit_is_impossible():
     async def run():
         bot = SimpleNamespace(
