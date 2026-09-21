@@ -173,3 +173,121 @@ def test_blink_signal_is_periodic_and_bounded():
     ]
     assert all(0.0 <= value <= 1.0 for value in values)
     assert max(values) > 0.9
+
+
+def test_face_tracks_balls_and_milestone_has_a_happier_finale():
+    samples = [motion_layout(i / FPS, days=8, duration=10) for i in range(300)]
+    assert max(s.jake.smile for s in samples) - min(s.jake.smile for s in samples) > 0.3
+    assert max(s.jake.mouth_open for s in samples) > 0.4
+    assert max(s.jake.gaze[0] for s in samples) > 0.1
+    assert min(s.jake.gaze[0] for s in samples) < -0.1
+    assert min(s.jake.gaze[1] for s in samples) < -0.3
+    for sample in samples[:270]:
+        # Direction follows the actual ball positions, including higher 10s throws.
+        assert sample.jake.gaze[0] == sum(b.center[0] - 360 for b in sample.balls) / 310
+    assert (
+        motion_layout(4.9, days=100, duration=5).jake.mouth_open
+        > motion_layout(4.9, days=8, duration=5).jake.mouth_open
+    )
+
+
+def test_grounded_anticipation_release_and_settle():
+    prep = motion_layout(0.68, days=8, duration=5).jake
+    release = motion_layout(0.94, days=8, duration=5).jake
+    settle = motion_layout(1.9, days=8, duration=5).jake
+    assert prep.pose_name == "pre-throw"
+    assert prep.squat > 0.9
+    assert release.pose_name == "throw"
+    assert release.stretch > 0.9
+    assert release.heel_lift[1] > 0 and release.heel_lift[0] == 0
+    assert settle.squat == settle.stretch == 0
+    assert prep.hand_offsets[0][1] > release.hand_offsets[0][1]
+
+
+def test_ten_second_motion_is_bounded_and_continuous():
+    for days in (8, 7, 30, 100, 365):
+        poses = [
+            motion_layout(i / FPS, days=days, duration=10).jake for i in range(301)
+        ]
+        assert {p.pose_name for p in poses} == {
+            "idle",
+            "pre-throw",
+            "throw",
+            "catch",
+            "celebration",
+        }
+        for p in poses:
+            assert p.center_y == 805 and p.height_scale == 1
+            assert all(0 <= h <= 3 for h in p.heel_lift)
+            assert 0 <= p.squat <= 1 and 0 <= p.stretch <= 1
+            assert abs(p.hip_sway) <= 3
+            assert all(abs(v) <= 24 for offset in p.hand_offsets for v in offset)
+        for a, b in zip(poses, poses[1:]):
+            assert abs(a.sway - b.sway) < 4
+            assert abs(a.squat - b.squat) < 0.6
+            assert (
+                max(
+                    abs(x - y)
+                    for ah, bh in zip(a.hand_offsets, b.hand_offsets)
+                    for x, y in zip(ah, bh)
+                )
+                < 8
+            )
+        assert poses[-1] == poses[-2] == poses[-3]
+
+
+def test_finale_finishes_real_flights_and_holds_both_balls():
+    for duration in (5, 10):
+        for days in (8, 7, 100):
+            last = motion_layout(duration - 0.1, days=days, duration=duration)
+            earlier = motion_layout(duration - 0.2, days=days, duration=duration)
+            assert last == earlier
+            assert all(not b.airborne for b in last.balls)
+            assert last.balls[0].center != last.balls[1].center
+            assert last.jake.pose_name == "celebration"
+            assert last.jake.squat == last.jake.stretch == 0
+            assert last.jake.heel_lift == (0, 0)
+
+
+def test_actual_asset_face_and_ground_contact_render():
+    from dataclasses import replace
+    from PIL import ImageChops
+    from app.story.renderer import celebration_art
+
+    rig = JakeRig(celebration_art(420), celebration=True)
+    idle = motion_layout(0, days=8, duration=5).jake
+    prep = motion_layout(0.72, days=8, duration=5).jake
+    base = rig.render(0, idle)
+    changed = rig.render(0.72, prep)
+    assert rig.placement(base) == rig.placement(changed)
+    assert abs(base.getbbox()[3] - changed.getbbox()[3]) <= 1
+    # Lower legs move less than arms/head, in rendered pixels, not only pose values.
+    diff = ImageChops.difference(base, changed).convert("RGB")
+    from PIL import ImageStat
+
+    upper = sum(ImageStat.Stat(diff.crop((0, 40, base.width, 260))).mean)
+    lower = sum(ImageStat.Stat(diff.crop((0, 380, base.width, base.height))).mean)
+    assert upper > lower * 2
+    for field, value in [
+        ("gaze", (0.8, -0.8)),
+        ("smile", 0.9),
+        ("mouth_open", 0.7),
+        ("blink", 0.5),
+    ]:
+        face = rig._with_face(replace(idle, **{field: value}))
+        assert (
+            ImageChops.difference(face, rig._with_face(idle)).convert("RGB").getbbox()
+            is not None
+        )
+
+
+def test_mesh_identity_preserves_source_orientation():
+    from app.story.motion_v2 import JakePose
+    from PIL import ImageStat
+
+    source = Image.new("RGBA", (120, 120), "red")
+    ImageDraw.Draw(source).rectangle((60, 0, 119, 59), fill="blue")
+    rig = JakeRig(source)
+    out = rig.render(0, JakePose(1, 1, 805, 0, 0, ((0, 0), (0, 0)), 0))
+    assert ImageStat.Stat(out.crop((100, 40, 130, 70))).mean[2] > 240
+    assert ImageStat.Stat(out.crop((40, 100, 70, 130))).mean[0] > 240

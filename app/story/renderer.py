@@ -17,7 +17,6 @@ from app.story.motion_v2 import (
     ball_shadow,
     confetti_particles,
     confetti_state,
-    milestone_style,
     motion_blur_samples,
     motion_layout,
     timeline_state,
@@ -338,9 +337,8 @@ class StoryRenderer:
             avatar_ball(n, p, palette[i]) for i, (n, p) in enumerate(zip(names, photos))
         ]
         jake_source = celebration_art(420)
-        rig = JakeRig(jake_source)
+        rig = JakeRig(jake_source, celebration=True)
         confetti = confetti_particles(days, duration)
-        style = milestone_style(days)
         for frame in range(duration * FPS):
             t = frame / FPS
             timeline = timeline_state(t, duration=duration, days=days)
@@ -395,18 +393,8 @@ class StoryRenderer:
                     )
 
             actor = rig.render(t, layout.jake)
-            finale_scale = 1.0 + (style.finale_scale - 1.0) * timeline.finale
-            if abs(finale_scale - 1.0) > 0.002:
-                actor = actor.resize(
-                    (
-                        max(1, round(actor.width * finale_scale)),
-                        max(1, round(actor.height * finale_scale)),
-                    ),
-                    Image.Resampling.LANCZOS,
-                )
-
-            shadow_width = round(225 * layout.jake.width_scale * finale_scale)
-            shadow_y = round(layout.jake.center_y + actor.height * 0.43)
+            shadow_width = round(225 - 3 * layout.jake.stretch + 4 * layout.jake.squat)
+            shadow_y = 990
             draw.ellipse(
                 (
                     360 - shadow_width // 2,
@@ -416,13 +404,7 @@ class StoryRenderer:
                 ),
                 fill=(12, 16, 34, 145),
             )
-            image.alpha_composite(
-                actor,
-                (
-                    360 - actor.width // 2,
-                    round(layout.jake.center_y - actor.height / 2),
-                ),
-            )
+            image.alpha_composite(actor, rig.placement(actor))
 
             # الكرة الأمامية تنرسم بعد الشخصية، فيصير occlusion حقيقي بدل طبقة واحدة.
             for index, (ball, motion) in enumerate(zip(balls, layout.balls)):

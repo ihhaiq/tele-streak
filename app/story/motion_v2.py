@@ -4,11 +4,12 @@ import math
 import random
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 FPS = 30
 RIG_SUPERSAMPLE = 1.25
-HAND_Y = 655.0
+# Ball centers sit one radius above the raised palms.
+HAND_Y = 558.0
 LEFT_HAND = (205.0, HAND_Y)
 RIGHT_HAND = (515.0, HAND_Y)
 MILESTONES = {7, 30, 50, 100, 365}
@@ -46,6 +47,14 @@ class JakePose:
     head_nod: float
     hand_offsets: tuple[tuple[float, float], tuple[float, float]]
     blink: float
+    smile: float = 0.0
+    mouth_open: float = 0.0
+    gaze: tuple[float, float] = (0.0, 0.0)
+    squat: float = 0.0
+    stretch: float = 0.0
+    heel_lift: tuple[float, float] = (0.0, 0.0)
+    hip_sway: float = 0.0
+    pose_name: str = "idle"
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +190,17 @@ def ball_motion(
             0.0,
         )
 
+    last_cycle = -1
+    end = warmup + stagger
+    while True:
+        next_flight, _ = _flight_parameters(
+            cycle=last_cycle + 1, days=days, duration=duration
+        )
+        if end + next_flight > duration - 0.50:
+            break
+        last_cycle += 1
+        end += next_flight + hold
+
     # نحتاج دورة متغيرة لأن بعض رميات 10s/milestone أطول.
     elapsed = shifted
     cycle = 0
@@ -192,6 +212,12 @@ def ball_motion(
         elapsed -= period
         cycle += 1
 
+    if cycle > last_cycle:
+        hand = (index + last_cycle + 1) % 2
+        center = LEFT_HAND if hand == 0 else RIGHT_HAND
+        return BallMotion(
+            center, 1.0, 1.0, False, 1.0, 1 - hand, hand, True, 0.0, math.inf, math.inf
+        )
     flight, rise = _flight_parameters(cycle=cycle, days=days, duration=duration)
     local = elapsed
     source_hand = (index + cycle) % 2
@@ -229,8 +255,22 @@ def ball_motion(
         )
     else:
         caught = local - flight
-        impact = math.exp(-11.0 * caught)
-        bounce = 5.0 * damped_spring(caught, frequency=3.4, damping=8.5)
+        if cycle == last_cycle and caught >= 0.27:
+            return BallMotion(
+                (end_x, end_y),
+                1.0,
+                1.0,
+                False,
+                1.0,
+                source_hand,
+                target_hand,
+                True,
+                0.0,
+                math.inf,
+                math.inf,
+            )
+        impact = 1.0 - smoothstep(caught / 0.27)
+        bounce = 5.0 * damped_spring(caught, frequency=3.4, damping=8.5) * impact
         motion = BallMotion(
             (end_x, end_y + bounce),
             1.0 + 0.030 * impact,
@@ -241,30 +281,8 @@ def ball_motion(
             target_hand,
             (cycle + index) % 2 == 0,
             0.0,
-            max(0.0, hold - caught),
+            max(0.0, hold - caught) if cycle < last_cycle else math.inf,
             max(0.0, caught),
-        )
-
-    # آخر جزء من الفيديو يلتقط الكرتين ويثبتهم بدل ما ينقطع الفيديو وسط رمية.
-    finale_start = max(0.0, duration - 0.72)
-    if t > finale_start:
-        amount = smoothstep((t - finale_start) / 0.62)
-        target = (190.0, 665.0) if index == 0 else (530.0, 665.0)
-        return BallMotion(
-            (
-                motion.center[0] + (target[0] - motion.center[0]) * amount,
-                motion.center[1] + (target[1] - motion.center[1]) * amount,
-            ),
-            motion.scale_x + (1.0 - motion.scale_x) * amount,
-            motion.scale_y + (1.0 - motion.scale_y) * amount,
-            motion.airborne and amount < 0.8,
-            motion.progress,
-            motion.source_hand,
-            motion.target_hand,
-            True,
-            motion.vertical_velocity * (1.0 - amount),
-            motion.time_to_launch,
-            motion.time_since_catch,
         )
 
     return motion
@@ -290,122 +308,98 @@ def motion_blur_samples(
     return tuple(samples)
 
 
-def _event_reaction(t: float, *, days: int, duration: int) -> float:
-    reaction = 0.0
-    for index in range(2):
-        shifted = t - 0.82 - index * 0.64
-        if shifted < 0:
-            continue
-        elapsed = shifted
-        cycle = 0
-        event_time = 0.82 + index * 0.64
-        while True:
-            flight, _ = _flight_parameters(cycle=cycle, days=days, duration=duration)
-            period = flight + 0.34
-            if elapsed < period:
-                reaction += 0.72 * damped_spring(
-                    t - event_time,
-                    frequency=2.2,
-                    damping=5.0,
-                )
-                reaction -= 0.52 * damped_spring(
-                    t - (event_time + flight),
-                    frequency=2.9,
-                    damping=6.4,
-                )
-                break
-            elapsed -= period
-            event_time += period
-            cycle += 1
-    return max(-1.2, min(1.2, reaction))
+def _events(t: float, days: int, duration: int):
+    """Same launch schedule as the balls; pulses have zero slope at their edges."""
+    start = 0.82
+    cycle = 0
+    while True:
+        flight, _ = _flight_parameters(cycle=cycle, days=days, duration=duration)
+        if start + 0.64 + flight > duration - 0.50:
+            break
+        for index in range(2):
+            launch = start + index * 0.64
+            yield (index + cycle) % 2, launch, launch + flight
+        start += flight + 0.34
+        cycle += 1
 
 
-def _hand_offsets(
-    balls: tuple[BallMotion, BallMotion],
-) -> tuple[tuple[float, float], tuple[float, float]]:
-    offsets = [[0.0, 0.0], [0.0, 0.0]]
-
-    for motion in balls:
-        if motion.airborne:
-            # follow-through بعد الإفلات.
-            if motion.progress < 0.18:
-                amount = 1.0 - motion.progress / 0.18
-                offsets[motion.source_hand][0] += (
-                    7.0 if motion.source_hand == 0 else -7.0
-                ) * amount
-                offsets[motion.source_hand][1] -= 8.0 * amount
-
-            # اليد المستقبلة تطلع باتجاه الكرة قبل الالتقاط.
-            if motion.progress > 0.76:
-                amount = smoothstep((motion.progress - 0.76) / 0.24)
-                hand_x, hand_y = LEFT_HAND if motion.target_hand == 0 else RIGHT_HAND
-                offsets[motion.target_hand][0] += (
-                    motion.center[0] - hand_x
-                ) * 0.18 * amount
-                offsets[motion.target_hand][1] += (
-                    motion.center[1] - hand_y
-                ) * 0.22 * amount
-        else:
-            # anticipation قبل الرمية: اليد تنزل للخلف لحظة ثم تنطلق.
-            if 0.0 < motion.time_to_launch < 0.20:
-                amount = smoothstep((0.20 - motion.time_to_launch) / 0.20)
-                hand = motion.target_hand if motion.time_since_catch > 0 else motion.source_hand
-                offsets[hand][0] += (-9.0 if hand == 0 else 9.0) * amount
-                offsets[hand][1] += 11.0 * amount
-
-            # امتصاص الالتقاط بدل توقف الكرة واليد بشكل مفاجئ.
-            if 0.0 <= motion.time_since_catch < 0.18:
-                amount = 1.0 - smoothstep(motion.time_since_catch / 0.18)
-                offsets[motion.target_hand][1] += 8.0 * amount
-
-    return (
-        (offsets[0][0], offsets[0][1]),
-        (offsets[1][0], offsets[1][1]),
-    )
+def _pulse(t: float, start: float, peak: float, end: float) -> float:
+    if t < start or t > end:
+        return 0.0
+    if t <= peak:
+        return smoothstep((t - start) / (peak - start))
+    return 1.0 - smoothstep((t - peak) / (end - peak))
 
 
 def _blink_amount(t: float) -> float:
-    # رمشتان قصيرتان كل 4.2 ثانية، بدون randomness حتى الرندر reproducible.
     phase = t % 4.2
-    for center in (1.75, 1.90):
-        distance = abs(phase - center)
-        if distance < 0.075:
-            return max(0.0, 1.0 - distance / 0.075)
-    return 0.0
+    return max(_pulse(phase, c - 0.11, c, c + 0.15) for c in (1.75, 3.65))
 
 
-def motion_layout(
-    t: float,
-    *,
-    days: int,
-    duration: int,
-) -> MotionLayout:
-    t = max(0.0, float(t))
-    balls = (
-        ball_motion(t, 0, days=days, duration=duration),
-        ball_motion(t, 1, days=days, duration=duration),
+def motion_layout(t: float, *, days: int, duration: int) -> MotionLayout:
+    t = max(0.0, min(float(duration), float(t)))
+    balls = tuple(ball_motion(t, i, days=days, duration=duration) for i in range(2))
+    hands = [[0.0, 0.0], [0.0, 0.0]]
+    heels = [0.0, 0.0]
+    anticipation = release = catch = lean = secondary = joy = 0.0
+    for hand, launch, landing in _events(t, days, duration):
+        direction = 1.0 if hand == 0 else -1.0
+        prep = _pulse(t, launch - 0.30, launch - 0.14, launch + 0.04)
+        throw = _pulse(t, launch - 0.08, launch + 0.12, launch + 0.40)
+        reach = _pulse(t, landing - 0.28, landing - 0.08, landing + 0.13)
+        absorb = _pulse(t, landing - 0.06, landing + 0.10, landing + 0.27)
+        hands[hand][0] += direction * (-10 * prep + 11 * throw)
+        hands[hand][1] += 12 * prep - 12 * throw
+        hands[1 - hand][0] += direction * 6 * reach
+        hands[1 - hand][1] += -9 * reach + 9 * absorb
+        anticipation += prep
+        release += throw
+        catch += absorb
+        lean += direction * (throw - 0.6 * prep - 0.5 * absorb)
+        heels[1 - hand] += 3.0 * throw
+        secondary += direction * _pulse(t, launch + 0.04, launch + 0.18, launch + 0.48)
+        joy += 0.45 * throw + 0.65 * _pulse(t, landing, landing + 0.13, landing + 0.4)
+
+    finale = smoothstep((t - (duration - 0.55)) / 0.30)
+    active = 1.0 - finale
+    squat = min(1.0, anticipation + 0.55 * catch) * active
+    stretch = min(1.0, release) * active
+    # Follow both balls continuously; no abrupt choice of an active ball.
+    gaze_x = sum(ball.center[0] - 360 for ball in balls) / 310
+    gaze_y = sum(ball.center[1] - HAND_Y for ball in balls) / 400
+    excited = min(1.0, joy) * active
+    milestone = milestone_style(days).enabled
+    pose_name = (
+        "celebration"
+        if finale > 0.5
+        else (
+            "pre-throw"
+            if anticipation > 0.3
+            else "catch" if catch > 0.2 else "throw" if release > 0.2 else "idle"
+        )
     )
-    reaction = _event_reaction(t, days=days, duration=duration)
-    idle = math.sin(2 * math.pi * t / 2.55)
-
-    height_scale = max(0.935, min(1.070, 1.0 + 0.042 * reaction))
-    width_scale = max(0.945, min(1.060, 1.0 - 0.028 * reaction))
-    intro = smoothstep(t / 0.55)
-    center_y = 820.0 - 15.0 * intro - 6.0 * reaction + 2.0 * idle
-    sway = 7.0 * math.sin(2 * math.pi * t / 2.05) + 2.5 * reaction
-    head_nod = 2.5 * math.sin(2 * math.pi * t / 2.9) - 2.0 * reaction
-
     return MotionLayout(
-        jake=JakePose(
-            width_scale=width_scale,
-            height_scale=height_scale,
-            center_y=center_y,
-            sway=sway,
-            head_nod=head_nod,
-            hand_offsets=_hand_offsets(balls),
-            blink=_blink_amount(t),
+        JakePose(
+            width_scale=1.0,
+            height_scale=1.0,
+            center_y=805.0,
+            sway=6.0 * lean * active,
+            head_nod=(-1.8 * secondary + 0.8 * catch) * active,
+            hand_offsets=tuple((x * active, y * active) for x, y in hands),
+            blink=_blink_amount(t) * active,
+            smile=0.25 + 0.4 * excited + (0.65 if milestone else 0.5) * finale,
+            mouth_open=0.35 * excited + (0.80 if milestone else 0.5) * finale,
+            gaze=(
+                max(-1.0, min(1.0, gaze_x)) * active,
+                max(-1.0, min(0.2, gaze_y)) * active,
+            ),
+            squat=squat,
+            stretch=stretch,
+            heel_lift=tuple(min(3.0, h) * active for h in heels),
+            hip_sway=1.8 * lean * active,
+            pose_name=pose_name,
         ),
-        balls=balls,
+        balls,
     )
 
 
@@ -449,7 +443,11 @@ def confetti_particles(days: int, duration: int) -> tuple[ConfettiParticle, ...]
 
     bursts = [
         (0.12, round(24 * style.confetti_scale), 315.0),
-        (duration - 0.68, round((14 if not style.enabled else 32) * style.confetti_scale), 600.0),
+        (
+            duration - 0.68,
+            round((14 if not style.enabled else 32) * style.confetti_scale),
+            600.0,
+        ),
     ]
 
     for birth, count, origin_y in bursts:
@@ -519,7 +517,12 @@ def _component_boxes(mask: Image.Image) -> list[tuple[int, int, int, int]]:
                 xs.append(px)
                 ys.append(py)
                 for nx, ny in ((px - 1, py), (px + 1, py), (px, py - 1), (px, py + 1)):
-                    if 0 <= nx < width and 0 <= ny < height and pixels[nx, ny] and (nx, ny) not in seen:
+                    if (
+                        0 <= nx < width
+                        and 0 <= ny < height
+                        and pixels[nx, ny]
+                        and (nx, ny) not in seen
+                    ):
                         seen.add((nx, ny))
                         stack.append((nx, ny))
             if 3 <= len(xs) <= 500:
@@ -546,7 +549,11 @@ def detect_landmarks(source: Image.Image) -> RigLandmarks:
     min_y = max_y = round(top + height * 0.52)
 
     for y in range(max(0, band_top), min(image.height, band_bottom)):
-        row_x = [x for x in range(max(0, left), min(image.width, right)) if alpha_pixels[x, y] > 64]
+        row_x = [
+            x
+            for x in range(max(0, left), min(image.width, right))
+            if alpha_pixels[x, y] > 64
+        ]
         if not row_x:
             continue
         if row_x[0] < min_x:
@@ -577,9 +584,9 @@ def detect_landmarks(source: Image.Image) -> RigLandmarks:
 
     boxes = _component_boxes(dark)
     boxes = [
-        box for box in boxes
-        if box[3] - box[1] <= height * 0.16
-        and box[2] - box[0] <= width * 0.20
+        box
+        for box in boxes
+        if box[3] - box[1] <= height * 0.16 and box[2] - box[0] <= width * 0.20
     ]
     boxes.sort(key=lambda box: ((box[1] + box[3]) / 2, box[0]))
     eye_boxes: tuple[tuple[int, int, int, int], ...] = ()
@@ -606,7 +613,9 @@ def detect_landmarks(source: Image.Image) -> RigLandmarks:
     )
 
 
-def _sample_skin_color(image: Image.Image, box: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+def _sample_skin_color(
+    image: Image.Image, box: tuple[int, int, int, int]
+) -> tuple[int, int, int, int]:
     left, top, right, bottom = box
     pad = 5
     crop = image.crop(
@@ -617,10 +626,7 @@ def _sample_skin_color(image: Image.Image, box: tuple[int, int, int, int]) -> tu
             min(image.height, bottom + pad),
         )
     ).convert("RGBA")
-    pixels = [
-        px for px in crop.getdata()
-        if px[3] > 100 and max(px[:3]) > 110
-    ]
+    pixels = [px for px in crop.getdata() if px[3] > 100 and max(px[:3]) > 110]
     if not pixels:
         return (240, 181, 44, 255)
     # المتوسط مقاوم كفاية لأن المساحة حول العين صغيرة.
@@ -633,36 +639,117 @@ def _sample_skin_color(image: Image.Image, box: tuple[int, int, int, int]) -> tu
 class JakeRig:
     """Rig برمجي مبني من silhouette الأصل، بدون ملفات أطراف منفصلة."""
 
-    def __init__(self, source: Image.Image):
+    def __init__(self, source: Image.Image, *, celebration: bool = False):
         self.source = source.convert("RGBA")
         self.landmarks = detect_landmarks(self.source)
+        self.celebration = celebration
+        if celebration:
+            # Measured on celebration_art: the raised fists are above the torso.
+            sx, sy = source.width / 420, source.height / 420
+            self.landmarks = RigLandmarks(
+                self.landmarks.bbox,
+                (69 * sx, 59 * sy),
+                (350 * sx, 59 * sy),
+                (214 * sx, 116 * sy),
+                tuple(
+                    tuple(
+                        round(v * (sx if i % 2 == 0 else sy)) for i, v in enumerate(box)
+                    )
+                    for box in ((155, 96, 197, 137), (231, 94, 271, 134))
+                ),
+            )
 
-    def _with_blink(self, amount: float) -> Image.Image:
-        if amount <= 0.03 or len(self.landmarks.eye_boxes) != 2:
+    def _with_face(self, pose: JakePose) -> Image.Image:
+        if len(self.landmarks.eye_boxes) != 2:
             return self.source
         image = self.source.copy()
         draw = ImageDraw.Draw(image)
-        for box in self.landmarks.eye_boxes:
-            left, top, right, bottom = box
-            skin = _sample_skin_color(image, box)
-            draw.rounded_rectangle(
-                (left - 2, top - 2, right + 2, bottom + 2),
-                radius=3,
-                fill=skin,
+        for left, top, right, bottom in self.landmarks.eye_boxes:
+            cx, cy = (left + right) / 2, (top + bottom) / 2
+            rx, ry = (right - left) / 2, (bottom - top) / 2
+            if self.celebration:
+                # Keep the existing eye outline and muzzle; redraw only the interior.
+                draw.ellipse(
+                    (left + 3, top + 3, right - 3, bottom - 3),
+                    fill=(255, 253, 241, 255),
+                )
+                px = cx + pose.gaze[0] * rx * 0.30
+                py = cy + pose.gaze[1] * ry * 0.30
+                radius = rx * 0.22
+                draw.ellipse(
+                    (px - radius, py - radius, px + radius, py + radius),
+                    fill=(30, 25, 19, 255),
+                )
+            if pose.blink > 0:
+                # Compress the complete eye continuously, instead of switching to a line.
+                box = (left, top, right, bottom)
+                eye = image.crop(box)
+                skin = (
+                    (248, 190, 34, 255)
+                    if self.celebration
+                    else _sample_skin_color(image, box)
+                )
+                draw.ellipse(box, fill=skin)
+                eye_h = max(2, round((bottom - top) * (1 - 0.94 * pose.blink)))
+                eye = eye.resize((right - left, eye_h), Image.Resampling.LANCZOS)
+                image.alpha_composite(eye, (left, round(cy - eye_h / 2)))
+        if self.celebration:
+            sx, sy = image.width / 420, image.height / 420
+            # The patch stays below the muzzle and does not touch the nose.
+            mask = Image.new("L", image.size)
+            ImageDraw.Draw(mask).polygon(
+                [
+                    (round(x * sx), round(y * sy))
+                    for x, y in (
+                        (201, 150),
+                        (237, 150),
+                        (240, 162),
+                        (235, 175),
+                        (222, 180),
+                        (208, 177),
+                        (200, 165),
+                    )
+                ],
+                fill=255,
             )
-            center_y = (top + bottom) / 2
-            eye_width = max(4, right - left)
-            line_half = eye_width * (0.35 + 0.15 * amount)
-            center_x = (left + right) / 2
-            draw.line(
-                (center_x - line_half, center_y, center_x + line_half, center_y),
-                fill=(35, 29, 20, 255),
-                width=max(1, round(2 * amount)),
-            )
+            mask = mask.filter(ImageFilter.GaussianBlur(max(0.5, sx)))
+            skin = Image.new("RGBA", image.size, (252, 191, 24, 253))
+            skin_draw = ImageDraw.Draw(skin)
+            for y in range(round(148 * sy), round(183 * sy)):
+                color = self.source.getpixel((round(246 * sx), y))
+                skin_draw.line((round(197 * sx), y, round(242 * sx), y), fill=color)
+            image = Image.composite(skin, image, mask)
+            draw = ImageDraw.Draw(image)
+            width = (25 + 7 * pose.smile) * sx
+            cx, top = 219 * sx, 148 * sy
+            depth = (7 + 24 * pose.mouth_open) * sy
+            box = (cx - width / 2, top, cx + width / 2, top + depth)
+            if pose.mouth_open > 0.08:
+                draw.ellipse(box, fill=(44, 24, 20, 255))
+                draw.ellipse(
+                    (
+                        cx - width * 0.24,
+                        top + depth * 0.60,
+                        cx + width * 0.24,
+                        top + depth * 0.94,
+                    ),
+                    fill=(235, 100, 111, 255),
+                )
+            else:
+                draw.arc(
+                    box, 0, 180, fill=(44, 24, 20, 255), width=max(2, round(2 * sx))
+                )
         return image
 
+    def placement(
+        self, actor: Image.Image, *, floor_y: float = 990.0
+    ) -> tuple[int, int]:
+        # A fixed source-space sole, independent of head or body movement.
+        sole = (28 + self.landmarks.bbox[3]) / (self.source.height + 56)
+        return 360 - actor.width // 2, round(floor_y - sole * actor.height)
+
     def render(self, t: float, pose: JakePose) -> Image.Image:
-        source = self._with_blink(pose.blink)
+        source = self._with_face(pose)
         final_width = max(1, round(source.width * pose.width_scale))
         final_height = max(1, round(source.height * pose.height_scale))
         width = max(1, round(final_width * RIG_SUPERSAMPLE))
@@ -695,7 +782,11 @@ class JakeRig:
         def displacement(x: float, y: float) -> tuple[float, float]:
             normalized_y = clamp01((y - pad) / max(1.0, height))
             dx = pose.sway * RIG_SUPERSAMPLE * (1.0 - normalized_y) ** 0.72
-            dy = 0.0
+            # Squat moves hips and upper body; the soles remain planted.
+            planted = 1.0 - smoothstep((normalized_y - 0.72) / 0.20)
+            dy = (7.0 * pose.squat - 3.0 * pose.stretch) * RIG_SUPERSAMPLE * planted
+            hip_weight = math.exp(-(((normalized_y - 0.70) / 0.16) ** 2))
+            dx += pose.hip_sway * RIG_SUPERSAMPLE * hip_weight
 
             # الرأس يتبع الجسم لكن بتأخير/نود خفيف.
             head_distance = ((x - head[0]) / 105.0) ** 2 + ((y - head[1]) / 90.0) ** 2
@@ -703,20 +794,55 @@ class JakeRig:
             dy += pose.head_nod * RIG_SUPERSAMPLE * head_weight
             dx += pose.sway * RIG_SUPERSAMPLE * 0.20 * head_weight
 
-            # كل يد لها joint محلي يتبع الكرة قبل الالتقاط وبعد الرمي.
-            for anchor, offset in zip(
-                (left_hand, right_hand),
-                pose.hand_offsets,
+            # Shoulder -> elbow -> wrist: two bounded segments, shared bend.
+            for side, (anchor, offset) in enumerate(
+                zip((left_hand, right_hand), pose.hand_offsets)
             ):
-                distance = ((x - anchor[0]) / 105.0) ** 2 + ((y - anchor[1]) / 92.0) ** 2
-                weight = math.exp(-2.6 * distance)
-                dx += offset[0] * RIG_SUPERSAMPLE * weight
-                dy += offset[1] * RIG_SUPERSAMPLE * weight
+                shoulder = (
+                    pad + width * (0.32 if side == 0 else 0.68),
+                    pad + height * 0.45,
+                )
+                elbow = (
+                    (shoulder[0] + anchor[0]) / 2,
+                    (shoulder[1] + anchor[1]) / 2 + 5 * RIG_SUPERSAMPLE,
+                )
+                for joint, influence, radius in (
+                    (elbow, 0.42, 48.0),
+                    (anchor, 1.0, 42.0),
+                ):
+                    distance = ((x - joint[0]) / (radius * RIG_SUPERSAMPLE)) ** 2 + (
+                        (y - joint[1]) / (radius * RIG_SUPERSAMPLE)
+                    ) ** 2
+                    weight = math.exp(-2.0 * distance)
+                    dx += offset[0] * RIG_SUPERSAMPLE * weight * influence
+                    dy += offset[1] * RIG_SUPERSAMPLE * weight * influence
+
+                knee_x = pad + width * (0.31 if side == 0 else 0.69)
+                knee_y = pad + height * 0.82
+                knee_weight = math.exp(
+                    -2 * ((x - knee_x) / (35 * RIG_SUPERSAMPLE)) ** 2
+                    - 2 * ((y - knee_y) / (28 * RIG_SUPERSAMPLE)) ** 2
+                )
+                dx += (
+                    (-1 if side == 0 else 1)
+                    * 3
+                    * pose.squat
+                    * RIG_SUPERSAMPLE
+                    * knee_weight
+                )
+                # Lift the inner heel while the outer toe stays on the floor.
+                heel_x = pad + width * (0.31 if side == 0 else 0.69)
+                heel_y = pad + height * 0.90
+                heel_weight = math.exp(
+                    -3 * ((x - heel_x) / (22 * RIG_SUPERSAMPLE)) ** 2
+                    - 3 * ((y - heel_y) / (20 * RIG_SUPERSAMPLE)) ** 2
+                )
+                dy -= pose.heel_lift[side] * RIG_SUPERSAMPLE * heel_weight
 
             return dx, dy
 
-        cols = 8
-        rows = 10
+        cols = 24
+        rows = 28
         cell_w = canvas.width / cols
         cell_h = canvas.height / rows
         mesh = []
@@ -727,7 +853,7 @@ class JakeRig:
                 y0 = round(row * cell_h)
                 x1 = round((col + 1) * cell_w)
                 y1 = round((row + 1) * cell_h)
-                corners = ((x0, y0), (x1, y0), (x1, y1), (x0, y1))
+                corners = ((x0, y0), (x0, y1), (x1, y1), (x1, y0))
                 source_quad: list[float] = []
                 for x, y in corners:
                     dx, dy = displacement(x, y)
