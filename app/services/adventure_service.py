@@ -430,7 +430,7 @@ class AdventureService:
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="🚀 نشر الستوري",
+                            text="🚀 نشر الستوري • صاحب الحساب",
                             callback_data=f"story_publish:{request.token}",
                         ),
                     ],
@@ -440,7 +440,7 @@ class AdventureService:
             caption = (
                 f"🔥 ستريك متتالي لـ {record.current_streak} يوم!\n"
                 + (f"🎵 {music_title}\n" if music_title else "")
-                + "\nهاي معاينة الستوري. إذا عجبك اضغط «نشر الستوري»."
+                + "\nهاي معاينة الستوري. النشر متاح فقط لصاحب حساب الـBusiness."
             )
             destination = {
                 "chat_id": record.chat_id,
@@ -482,7 +482,7 @@ class AdventureService:
             )
         return None
 
-    async def _post_story(self, request) -> int:
+    async def _post_story(self, request, *, connection_id: str | None = None) -> int:
         path = Path(request.media_path)
         if not path.is_file():
             raise FileNotFoundError("story media is missing")
@@ -503,7 +503,10 @@ class AdventureService:
             filename = "streak-story.mp4"
 
         form = aiohttp.FormData()
-        form.add_field("business_connection_id", request.business_connection_id)
+        form.add_field(
+            "business_connection_id",
+            connection_id or request.business_connection_id,
+        )
         form.add_field("content", json.dumps(content, separators=(",", ":")))
         form.add_field("active_period", str(24 * 3600))
         form.add_field(
@@ -544,9 +547,13 @@ class AdventureService:
             return StoryPublishResult(status)
 
         try:
-            connection = await self.bot.get_business_connection(
-                request.business_connection_id
+            connection_id = (
+                await self.repository.resolve_active_connection_id(
+                    request.business_connection_id
+                )
+                or request.business_connection_id
             )
+            connection = await self.bot.get_business_connection(connection_id)
             rights = getattr(connection, "rights", None)
             if (
                 not getattr(connection, "is_enabled", False)
@@ -556,7 +563,10 @@ class AdventureService:
                 await self.data.release_story_publish(token)
                 return StoryPublishResult("permission")
 
-            story_id = await self._post_story(request)
+            story_id = await self._post_story(
+                request,
+                connection_id=connection_id,
+            )
         except Exception:
             await self.data.release_story_publish(token)
             logger.exception(
