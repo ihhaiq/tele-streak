@@ -53,7 +53,7 @@ def build_router(
             )
         except Exception:
             logger.exception(
-                "CHANNEL_STREAK_CELEBRATION_FAILED chat=%s days=%s",
+                "CHANNEL_STREAK_STICKER_FAILED chat=%s days=%s",
                 message.chat.id,
                 streak.current_streak,
             )
