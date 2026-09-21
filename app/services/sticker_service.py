@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Protocol
 
 from aiogram import Bot
@@ -29,6 +30,7 @@ from app.services.streak_messages import (
     build_broken_notice_rich_message,
 )
 from app.streak_modes import MODE_MESSAGE
+from app.story.renderer import write_celebration
 
 logger = logging.getLogger(__name__)
 MAX_SEND_ATTEMPTS = 3
@@ -372,6 +374,109 @@ class StickerService:
                     sticker_key,
                     sent.sticker.file_id,
                 )
+
+    async def _send_channel_sticker(
+        self,
+        *,
+        chat_id: int,
+        sticker: str | FSInputFile,
+    ) -> Message:
+        for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
+            try:
+                return await self.bot.send_sticker(
+                    chat_id=chat_id,
+                    sticker=sticker,
+                )
+            except TelegramRetryAfter as error:
+                if attempt == MAX_SEND_ATTEMPTS:
+                    raise
+                await asyncio.sleep(min(float(error.retry_after), 10.0))
+            except (TelegramNetworkError, TelegramServerError):
+                if attempt == MAX_SEND_ATTEMPTS:
+                    raise
+                await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
+        raise RuntimeError("unreachable channel sticker retry state")
+
+    async def send_channel_success(
+        self,
+        *,
+        chat_id: int,
+        days: int,
+    ) -> None:
+        if days < 1:
+            raise ValueError("days must be positive")
+
+        sticker_key = f"streak:{days}"
+        sent: Message | None = None
+
+        pack_file_id = self.pack.cached_file_id(str(days))
+        if pack_file_id:
+            try:
+                sent = await self._send_channel_sticker(
+                    chat_id=chat_id,
+                    sticker=pack_file_id,
+                )
+            except TelegramBadRequest:
+                self.pack.invalidate_cached_file_id(str(days))
+
+        cached_file_id = await self.repository.get_sticker_file_id(sticker_key)
+        if sent is None and cached_file_id:
+            try:
+                sent = await self._send_channel_sticker(
+                    chat_id=chat_id,
+                    sticker=cached_file_id,
+                )
+            except TelegramBadRequest:
+                await self.repository.delete_sticker_file_id(sticker_key)
+
+        if sent is None and 1 <= days <= 250:
+            path = self.ready_stickers_dir / f"{days:03}.webp"
+            if path.is_file():
+                sent = await self._send_channel_sticker(
+                    chat_id=chat_id,
+                    sticker=FSInputFile(path),
+                )
+
+        if sent is None:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=f"🔥 الستريك: {days}",
+            )
+            return
+
+        if sent.sticker:
+            await self.repository.set_sticker_file_id(
+                sticker_key,
+                sent.sticker.file_id,
+            )
+
+    async def send_channel_celebration(self, *, chat_id: int) -> None:
+        key = "special:celebration:v1"
+        cached = await self.repository.get_sticker_file_id(key)
+        if cached:
+            try:
+                await self._send_channel_sticker(
+                    chat_id=chat_id,
+                    sticker=cached,
+                )
+                return
+            except TelegramBadRequest:
+                await self.repository.delete_sticker_file_id(key)
+
+        with TemporaryDirectory(prefix="channel-streak-celebration-") as directory:
+            path = await asyncio.to_thread(
+                write_celebration,
+                Path(directory) / "celebration.webp",
+            )
+            sent = await self._send_channel_sticker(
+                chat_id=chat_id,
+                sticker=FSInputFile(path),
+            )
+        if sent.sticker:
+            await self.repository.set_sticker_file_id(
+                key,
+                sent.sticker.file_id,
+            )
 
     async def send_success(
         self,

@@ -1,5 +1,7 @@
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
@@ -68,6 +70,48 @@ class FakeBot:
 
     async def send_message(self, **kwargs):
         self.text_kwargs = kwargs
+
+
+
+def test_channel_success_uses_plain_channel_delivery_and_caches_file_id(tmp_path):
+    async def run():
+        ready = tmp_path / "ready"
+        ready.mkdir()
+        (ready / "001.webp").touch()
+        bot = SimpleNamespace(
+            send_sticker=AsyncMock(
+                return_value=SimpleNamespace(
+                    sticker=SimpleNamespace(file_id="channel-file-id")
+                )
+            ),
+            send_message=AsyncMock(),
+        )
+        repository = SimpleNamespace(
+            get_sticker_file_id=AsyncMock(return_value=None),
+            set_sticker_file_id=AsyncMock(),
+            delete_sticker_file_id=AsyncMock(),
+            resolve_active_connection_id=AsyncMock(),
+        )
+        service = StickerService(
+            bot,
+            repository,
+            FakeRenderer(tmp_path / "fallback.webp"),
+            ready,
+        )
+
+        await service.send_channel_success(chat_id=-10077, days=1)
+
+        kwargs = bot.send_sticker.await_args.kwargs
+        assert kwargs["chat_id"] == -10077
+        assert "business_connection_id" not in kwargs
+        repository.set_sticker_file_id.assert_awaited_once_with(
+            "streak:1",
+            "channel-file-id",
+        )
+        bot.send_message.assert_not_awaited()
+
+    asyncio.run(run())
+
 
 
 def test_status_uses_rich_h1_and_details(tmp_path):

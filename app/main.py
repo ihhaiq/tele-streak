@@ -82,7 +82,7 @@ async def main() -> None:
     streak_tests = StreakTestService(repository)
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
-    dp.include_router(channel_router(channel_repository, channel_streaks))
+    dp.include_router(channel_router(channel_repository, channel_streaks, stickers))
     dp.include_router(streak_test_router(repository, stickers, guests, streak_tests))
     dp.include_router(
         business_router(streaks, stickers, repository, activations, guests, adventures)
