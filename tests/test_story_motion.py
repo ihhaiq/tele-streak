@@ -1,33 +1,81 @@
-from app.story.renderer import WIDTH, _motion_layout
+from PIL import Image
+
+from app.story.renderer import (
+    _ball_motion,
+    _elastic_jake,
+    _motion_layout,
+)
 
 
-def test_story_motion_enters_once_then_settles():
-    start = _motion_layout(0.0)
-    settled = _motion_layout(1.0)
+def test_ball_follows_gravity_arc_between_hands():
+    launch = _ball_motion(0.35, 0)
+    quarter = _ball_motion(0.35 + 1.35 * 0.25, 0)
+    apex = _ball_motion(0.35 + 1.35 * 0.50, 0)
+    three_quarters = _ball_motion(0.35 + 1.35 * 0.75, 0)
+    caught = _ball_motion(0.35 + 1.35, 0)
 
-    assert 0.93 <= start.jake_scale <= 0.95
-    assert 0.99 <= settled.jake_scale <= 1.01
-    assert start.ball_centers[0][0] < 0
-    assert start.ball_centers[1][0] > WIDTH
-    assert 130 <= settled.ball_centers[0][0] <= 200
-    assert 520 <= settled.ball_centers[1][0] <= 590
-    assert settled.ball_scales[0] == 1.0
-    assert settled.ball_scales[1] == 1.0
+    assert launch.airborne
+    assert apex.airborne
+    assert not caught.airborne
+    assert launch.center == (205.0, 655.0)
+    assert caught.center[0] == 515.0
+    assert abs(caught.center[1] - 655.0) < 0.01
+
+    # السرعة الأفقية ثابتة تقريبًا، والقمة بالنص.
+    assert 350.0 <= apex.center[0] <= 370.0
+    assert apex.center[1] < quarter.center[1]
+    assert apex.center[1] < three_quarters.center[1]
+    assert abs(quarter.center[1] - three_quarters.center[1]) < 0.01
 
 
-def test_settled_story_motion_stays_subtle():
-    layouts = [_motion_layout(1.0 + index * 0.25) for index in range(12)]
+def test_ball_accelerates_downward_after_apex():
+    a = _ball_motion(0.35 + 1.35 * 0.55, 0)
+    b = _ball_motion(0.35 + 1.35 * 0.65, 0)
+    c = _ball_motion(0.35 + 1.35 * 0.75, 0)
+    d = _ball_motion(0.35 + 1.35 * 0.85, 0)
 
-    jake_scales = [layout.jake_scale for layout in layouts]
-    jake_y = [layout.jake_y for layout in layouts]
-    left_x = [layout.ball_centers[0][0] for layout in layouts]
-    left_y = [layout.ball_centers[0][1] for layout in layouts]
-    right_x = [layout.ball_centers[1][0] for layout in layouts]
-    right_y = [layout.ball_centers[1][1] for layout in layouts]
+    first_drop = c.center[1] - b.center[1]
+    second_drop = d.center[1] - c.center[1]
+    assert first_drop > 0
+    assert second_drop > first_drop
 
-    assert max(jake_scales) - min(jake_scales) < 0.01
-    assert max(jake_y) - min(jake_y) <= 6.1
-    assert max(left_x) - min(left_x) <= 4.1
-    assert max(right_x) - min(right_x) <= 4.1
-    assert max(left_y) - min(left_y) <= 8.1
-    assert max(right_y) - min(right_y) <= 8.1
+
+def test_jake_uses_controlled_squash_stretch_and_chain_motion():
+    layouts = [_motion_layout(index * 0.15) for index in range(30)]
+
+    widths = [item.jake_width_scale for item in layouts]
+    heights = [item.jake_height_scale for item in layouts]
+    amplitudes = [item.chain_amplitude for item in layouts]
+
+    assert min(widths) >= 0.95
+    assert max(widths) <= 1.055
+    assert min(heights) >= 0.94
+    assert max(heights) <= 1.065
+    assert max(widths) - min(widths) > 0.005
+    assert max(heights) - min(heights) > 0.005
+    assert all(7.0 <= amplitude <= 9.5 for amplitude in amplitudes)
+
+
+def test_elastic_jake_keeps_feet_more_stable_than_upper_body():
+    source = Image.new("RGBA", (420, 420), (255, 255, 255, 255))
+    actor_a = _elastic_jake(
+        source,
+        0.40,
+        width_scale=1.0,
+        height_scale=1.0,
+        chain_amplitude=9.0,
+    )
+    actor_b = _elastic_jake(
+        source,
+        0.90,
+        width_scale=1.0,
+        height_scale=1.0,
+        chain_amplitude=9.0,
+    )
+
+    assert actor_a.height == source.height
+    assert actor_b.height == source.height
+    assert actor_a.width > source.width
+    assert actor_b.width > source.width
+    assert actor_a.getbbox() is not None
+    assert actor_b.getbbox() is not None
