@@ -298,7 +298,7 @@ def build_router(
             if owner_id is None or message.from_user.id != owner_id:
                 return
             updated = await repository.set_task_notifications(
-                owner_id,
+                connection_id,
                 message.chat.id,
                 task_notifications,
             )
