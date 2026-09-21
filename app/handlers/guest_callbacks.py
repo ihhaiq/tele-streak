@@ -53,7 +53,8 @@ def build_router(
             return
 
         token = (callback.data or "").split(":", 1)[-1]
-        await callback.answer("جاري نشر الستوري 🚀")
+        with suppress(TelegramBadRequest):
+            await callback.answer("جاري نشر الستوري 🚀")
         result = await adventures.publish_story(token, callback.from_user.id)
 
         if result.status == "published":
@@ -104,7 +105,8 @@ def build_router(
         if not connection_id:
             await callback.answer("انتهت المعاينة أو ما عندك صلاحية.", show_alert=True)
             return
-        await callback.answer("أرسل ملف صوتي أو بصمة صوتية الآن 🎵", show_alert=True)
+        with suppress(TelegramBadRequest):
+            await callback.answer("أرسل ملف صوتي أو بصمة صوتية الآن 🎵", show_alert=True)
         if isinstance(callback.message, Message):
             await bot.send_message(
                 chat_id=callback.message.chat.id,
@@ -118,7 +120,8 @@ def build_router(
             await callback.answer("إدارة الأغنية غير متاحة حاليًا.", show_alert=True)
             return
         token = (callback.data or "").split(":", 1)[-1]
-        await callback.answer("جاري حذف الأغنية وإعادة تجهيز الستوري 🎬")
+        with suppress(TelegramBadRequest):
+            await callback.answer("جاري حذف الأغنية وإعادة تجهيز الستوري 🎬")
         error = await adventures.delete_story_music(token, callback.from_user.id)
         if error and isinstance(callback.message, Message):
             await bot.send_message(
