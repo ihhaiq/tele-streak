@@ -121,7 +121,7 @@ def build_router(repository, adventures) -> Router:
             if not record.is_enabled:
                 await callback.answer("فعّلوا الستريك أولًا.", show_alert=True)
                 return
-            await callback.answer("Jake دا يجهز معاينة الستوري 🎨")
+            await callback.answer("Jake دا يجهز الستوري 🎨")
             try:
                 reply_to = (
                     callback.message.message_id
@@ -136,7 +136,7 @@ def build_router(repository, adventures) -> Router:
                 )
             except Exception:
                 logger.exception("STORY_PREVIEW_FAILED")
-                error = "تعذر تجهيز معاينة الستوري هالمرة، جرب بعد شوي 🎨"
+                error = "تعذر تجهيز الستوري هالمرة، جرب بعد شوي 🎨"
             if error:
                 await bot.send_message(
                     chat_id=record.chat_id,
@@ -171,7 +171,7 @@ def build_router(repository, adventures) -> Router:
         elif action == "story":
             text = (
                 "مشاركة ستوري\n"
-                "اختار المعاينة. النشر يتم بعد تأكيدك."
+                "اختار نوع الستوري. راح يجهزه البوت وبعدها يظهر زر النشر."
             )
             rich = rich_story_page(owner, chat)
             keyboard = story_menu(owner, chat)
