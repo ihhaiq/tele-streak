@@ -15,7 +15,11 @@ from aiogram.types import (
     Message,
 )
 
-from app.adventures.views import navigation, progress_text
+from app.adventures.views import (
+    adventure_notice_rich,
+    adventure_notice_text,
+    navigation,
+)
 from app.database.repository import GuestStreakRequest, Repository
 from app.database.revive_request_repository import (
     ReviveApprovalState,
@@ -226,13 +230,15 @@ def build_router(
             else:
                 result = InlineQueryResultArticle(
                     id=f"adventure-{token}",
-                    title="مغامرتكم اليوم 🎉",
-                    input_message_content=InputTextMessageContent(
-                        message_text=adventure_state["latest_notice"]
-                        + "\n\n"
-                        + progress_text(profile)
+                    title="مهمة مكتملة ✅",
+                    input_message_content=InputRichMessageContent(
+                        rich_message=adventure_notice_rich(
+                            profile,
+                            adventure_state,
+                            owner_user_id,
+                            request.chat_id,
+                        )
                     ),
-                    reply_markup=navigation(owner_user_id, request.chat_id),
                 )
         elif event == "status":
             if streak is None:
@@ -475,6 +481,24 @@ def build_router(
                         title="انقطع الستريك",
                         input_message_content=InputTextMessageContent(
                             message_text=BROKEN_NOTICE_TEXT,
+                        ),
+                    )
+                    await message.answer_guest_query(fallback)
+                elif event == "adventure" and profile is not None and adventure_state is not None:
+                    logger.warning(
+                        "STREAK_GUEST_ADVENTURE_RICH_REJECTED connection=%s chat=%s error=%s",
+                        request.business_connection_id,
+                        request.chat_id,
+                        error,
+                    )
+                    fallback = InlineQueryResultArticle(
+                        id=f"adventure-text-{token}",
+                        title="مهمة مكتملة ✅",
+                        input_message_content=InputTextMessageContent(
+                            message_text=adventure_notice_text(
+                                profile,
+                                adventure_state,
+                            )
                         ),
                     )
                     await message.answer_guest_query(fallback)
