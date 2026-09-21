@@ -454,7 +454,7 @@ def motion_layout(t: float, *, days: int, duration: int) -> MotionLayout:
             squat=squat,
             stretch=stretch,
             heel_lift=tuple(min(3.0, h) * active for h in heels),
-            hip_sway=(1.8 * lean + 0.035 * jump_velocity) * active,
+            hip_sway=(1.8 * lean + 0.007 * jump_velocity) * active,
             pose_name=pose_name,
             jump_height=jump_height,
             jump_velocity=jump_velocity,
