@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
@@ -28,6 +26,7 @@ from app.services.guest_delivery import GuestDeliveryService
 from app.services.rich_status import (
     build_streak_fallback_text,
     build_streak_rich_message,
+    participation_text,
 )
 from app.services.sticker_service import StickerService
 from app.services.streak_messages import (
@@ -141,21 +140,9 @@ async def _special_sticker_id(
     return pack_id
 
 
-def _warning_text(streak, timezone_name: str | None) -> str:
-    try:
-        timezone = ZoneInfo(timezone_name or "Asia/Baghdad")
-    except ZoneInfoNotFoundError:
-        timezone = ZoneInfo("Asia/Baghdad")
-    today = datetime.now(timezone).date().isoformat()
-    owner_missing = streak.owner_sent_day != today
-    peer_missing = streak.peer_sent_day != today
-    if owner_missing and peer_missing:
-        missing = "أنتما لم ترسلا اليوم"
-    elif owner_missing:
-        missing = "صاحب الحساب لم يرسل اليوم"
-    else:
-        missing = "الطرف الثاني لم يرسل اليوم"
-    return f"⏰ بقي أقل من ساعتين. {missing} وقد ينقطع الستريك."
+def _warning_text(timezone_name: str | None, participation: dict) -> str:
+    progress = participation_text(**participation, timezone_name=timezone_name)
+    return f"⏰ بقي أقل من ساعتين وقد ينقطع الستريك.\n{progress}"
 
 
 def build_router(
@@ -197,6 +184,8 @@ def build_router(
         owner_user_id = await repository.get_owner_id(
             request.business_connection_id
         )
+
+        participation = await repository.participant_status(streak) if streak else {}
 
         profile = None
         adventure_state = None
@@ -245,6 +234,7 @@ def build_router(
                             streak_mode=streak.streak_mode,
                             timezone_name=timezone_name,
                             adventure_profile=profile,
+                            **participation,
                         ),
                     ),
                 )
@@ -261,6 +251,7 @@ def build_router(
                     streak_mode=streak.streak_mode,
                     timezone_name=timezone_name,
                     adventure_profile=profile,
+                    **participation,
                 )
                 result = InlineQueryResultArticle(
                     id=f"streak-{token}",
@@ -327,7 +318,7 @@ def build_router(
                 title="تنبيه الستريك",
                 input_message_content=InputTextMessageContent(
                     message_text=(
-                        _warning_text(streak, timezone_name)
+                        _warning_text(timezone_name, participation)
                         if streak is not None
                         else "⏰ قد ينقطع الستريك إذا لم يكتمل اليوم."
                     )
@@ -379,12 +370,14 @@ def build_router(
                 owner_name = await user_label(
                     message.bot,
                     state.owner_user_id,
-                    "الطرف الأول",
+                    participation.get("owner_name") or "الطرف الأول",
+                    repository,
                 )
                 peer_name = await user_label(
                     message.bot,
                     state.peer_user_id,
-                    "الطرف الثاني",
+                    participation.get("peer_name") or "الطرف الثاني",
+                    repository,
                 )
 
                 result = InlineQueryResultArticle(
@@ -440,6 +433,7 @@ def build_router(
                             streak_mode=streak.streak_mode,
                             timezone_name=timezone_name,
                             adventure_profile=profile,
+                            **participation,
                         ),
                     ),
                 )

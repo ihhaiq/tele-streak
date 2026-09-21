@@ -7,6 +7,7 @@ from aiogram import Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import Message
 
+from app.services.user_labels import user_label
 from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository
 from app.keyboards.streak import start_request_keyboard
@@ -128,7 +129,7 @@ def build_router(
                         chat_id=message.chat.id,
                         text=(
                             "🔥 لا يوجد ستريك مفعّل في هذه المحادثة بعد. "
-                            "اكتب «بدأ ستريك» لبدئه، أو وافق على طلب الطرف الثاني من خاص البوت."
+                            "اكتب «بدأ ستريك» لبدئه، أو وافق على طلب صديقك من خاص البوت."
                         ),
                     )
                     return
@@ -314,10 +315,11 @@ def build_router(
 
             await activations.clear_chat(connection_id, message.chat.id)
             await streaks.start_by_owner(message, connection_id)
+            peer_name = await user_label(message.bot, message.chat.id, "الطرف الثاني", repository)
             await stickers.send_notice_text(
                 connection_id=connection_id,
                 chat_id=message.chat.id,
-                text="🔥 بدأ الستريك. تم احتساب رسالتك، وبانتظار رسالة من الطرف الثاني اليوم.",
+                text=f"🔥 بدأ الستريك. ✅ أكمل اليوم: {message.from_user.full_name}\n⏳ بانتظار: {peer_name}",
             )
             logger.info(
                 "STREAK_STARTED_BY_OWNER connection=%s chat=%s",
@@ -356,7 +358,7 @@ def build_router(
                         "🔥 طلب بدء ستريك\n\n"
                         f"{peer_name}{peer_username} أرسل رسالة في محادثتك.\n"
                         "الستريك لن يبدأ تلقائيًا. اضغط الزر إذا تريد تفعيله؛ "
-                        "وسيتم احتساب رسالة الطرف الثاني الحالية ثم ينتظر البوت رسالتك."
+                        f"وسيتم احتساب رسالة {peer_name} الحالية ثم ينتظر البوت رسالتك."
                     ),
                     reply_markup=start_request_keyboard(token),
                 )

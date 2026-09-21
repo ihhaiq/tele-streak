@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from app.adventures.rules import Activity, Profile, apply_activity, make_day
 from app.adventures.tasks import ensure_task_slot
+from .participants import participant_names
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS adventure_profiles (
@@ -96,7 +97,11 @@ async def load_profile(db, key, today: str) -> Profile:
             key,
         )
     ).fetchone()
-    return Profile(**json.loads(row["state"])) if row else Profile(tracked_since=today)
+    profile = Profile(**json.loads(row["state"])) if row else Profile(tracked_since=today)
+    for role, name in zip(("owner", "peer"), await participant_names(db, *key)):
+        if name:
+            profile.stats[role]["name"] = name
+    return profile
 
 
 async def save_profile(db, key, profile: Profile) -> None:

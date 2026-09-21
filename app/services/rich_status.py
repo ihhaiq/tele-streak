@@ -49,6 +49,22 @@ def protection_text(freeze_count: int) -> str:
     return "🧊" * max(0, min(freeze_count, 3)) if freeze_count > 0 else "لا توجد"
 
 
+def participation_text(
+    *, owner_name: str | None = None, peer_name: str | None = None,
+    owner_sent_day: str | None = None, peer_sent_day: str | None = None,
+    timezone_name: str | None = DEFAULT_TIMEZONE,
+) -> str:
+    today = current_day(timezone_name)
+    owner, peer = owner_name or "الطرف الأول", peer_name or "الطرف الثاني"
+    done = [name for name, day in ((owner, owner_sent_day), (peer, peer_sent_day)) if day == today]
+    waiting = [name for name, day in ((owner, owner_sent_day), (peer, peer_sent_day)) if day != today]
+    if not waiting:
+        return f"✅ اكتمل اليوم بواسطة:\n{owner} و{peer}"
+    lines = [f"✅ أكمل اليوم: {done[0]}"] if done else []
+    lines.append("⏳ بانتظار: " + " و".join(waiting))
+    return "\n".join(lines)
+
+
 def build_streak_rich_message(
     *,
     current: int,
@@ -62,11 +78,20 @@ def build_streak_rich_message(
     streak_mode: str = MODE_MESSAGE,
     timezone_name: str | None = DEFAULT_TIMEZONE,
     adventure_profile: Profile | None = None,
+    owner_name: str | None = None,
+    peer_name: str | None = None,
+    owner_sent_day: str | None = None,
+    peer_sent_day: str | None = None,
 ) -> InputRichMessage:
     last_day = last_completed_day or "لا يوجد"
     remaining = remaining_day_text(timezone_name)
     midnight_unix = end_of_day_unix(timezone_name)
     mode_label = streak_mode_label(streak_mode)
+    participation = participation_text(
+        owner_name=owner_name, peer_name=peer_name,
+        owner_sent_day=owner_sent_day, peer_sent_day=peer_sent_day,
+        timezone_name=timezone_name,
+    )
 
     details = [
         f"<li>الأيام: <b>{completed_days}</b></li>",
@@ -100,6 +125,7 @@ def build_streak_rich_message(
             "<ul>"
             + "".join(details)
             + "</ul>"
+            + "<p>" + escape(participation).replace("\n", "<br>") + "</p>"
             + progress
             + "<hr/>"
             "<h3>الخيارات</h3>"
@@ -125,6 +151,10 @@ def build_streak_fallback_text(
     streak_mode: str = MODE_MESSAGE,
     timezone_name: str | None = DEFAULT_TIMEZONE,
     adventure_profile: Profile | None = None,
+    owner_name: str | None = None,
+    peer_name: str | None = None,
+    owner_sent_day: str | None = None,
+    peer_sent_day: str | None = None,
 ) -> str:
     lines = [
         "🔥 الستريك",
@@ -136,6 +166,11 @@ def build_streak_fallback_text(
     ]
     if break_count > 0:
         lines.append(f"الانقطاعات: {break_count}")
+    lines.append(participation_text(
+        owner_name=owner_name, peer_name=peer_name,
+        owner_sent_day=owner_sent_day, peer_sent_day=peer_sent_day,
+        timezone_name=timezone_name,
+    ))
     lines.append(f"⏳ المتبقي: {remaining_day_text(timezone_name)}")
     if adventure_profile:
         lines.extend(["", progress_text(adventure_profile)])

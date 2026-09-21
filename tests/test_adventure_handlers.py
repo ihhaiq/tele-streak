@@ -116,12 +116,13 @@ def test_nonmatching_media_reaches_tasks_and_keeps_success_flow():
             register_message=AsyncMock(return_value=Completion(False)),
         )
         repo = SimpleNamespace(
+            resolve_active_connection_id=AsyncMock(return_value="bc"),
             get_streak=AsyncMock(
                 return_value=SimpleNamespace(is_enabled=True, streak_mode="message")
             )
         )
         activations = SimpleNamespace(is_active=AsyncMock(return_value=True))
-        adventures = SimpleNamespace(after_activity=AsyncMock())
+        adventures = SimpleNamespace(after_activity=AsyncMock(), handle_music_upload=AsyncMock(return_value=False))
         guests = SimpleNamespace(summon=AsyncMock())
         router = business_router(
             streaks, SimpleNamespace(), repo, activations, guests, adventures
@@ -210,7 +211,7 @@ def test_compare_page_uses_two_column_compact_table():
     rich = rich_page(profile, {}, "compare", 10, 20)
     assert rich.html.startswith("<h1>مقارنة ودية</h1><hr/>")
     assert "<table compact>" in rich.html
-    assert "<th>الطرف الأول</th><th>الطرف الثاني</th>" in rich.html
+    assert "الطرف الأول" not in rich.html and "الطرف الثاني" not in rich.html
     assert "<b>حسين</b>" in rich.html
     assert "<b>صديق</b>" in rich.html
     assert "bordered" not in rich.html

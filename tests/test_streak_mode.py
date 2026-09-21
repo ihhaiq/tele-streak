@@ -39,7 +39,7 @@ def test_mode_filter_accepts_only_selected_content():
     assert not matches_streak_mode(text, MODE_VOICE)
 
 
-def test_status_places_mode_button_in_details_footer():
+def test_status_places_mode_button_in_details_options():
     rich = build_streak_rich_message(
         current=7,
         longest=12,
@@ -55,7 +55,7 @@ def test_status_places_mode_button_in_details_footer():
     assert rich.is_rtl is True
     assert rich.html is not None
     assert "<details>" in rich.html
-    assert "<footer>" in rich.html
+    assert "<h3>الخيارات</h3><table compact>" in rich.html
     assert 'data="streak_mode:open:777:123456"' in rich.html
     assert ">وضع الستريك</tg-button>" in rich.html
     assert "صورة / فيديو" in rich.html
@@ -134,7 +134,7 @@ def test_mode_change_is_scoped_to_one_business_connection(tmp_path):
         await database.init()
         repository = Repository(database)
         await repository.upsert_connection("bc-1", 10, None, True)
-        await repository.upsert_connection("bc-2", 10, None, True)
+        await repository.upsert_connection("bc-2", 11, None, True)
 
         await repository.register_activity(
             connection_id="bc-1",

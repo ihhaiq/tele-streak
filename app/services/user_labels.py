@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from aiogram import Bot
 
+from app.database.participants import account_name
+from app.database.repository import Repository
 
-async def user_label(bot: Bot, user_id: int, fallback: str) -> str:
-    """Return a readable account name without making names part of streak state."""
+
+async def user_label(
+    bot: Bot, user_id: int, fallback: str, repository: Repository | None = None,
+) -> str:
+    stored = await repository.get_account_name(user_id) if repository else None
+    if stored:
+        return stored
     try:
         user = await bot.get_chat(user_id)
     except Exception:
         return fallback
-    name = getattr(user, "full_name", None) or getattr(user, "title", None)
-    username = getattr(user, "username", None)
-    if name and username:
-        return f"{name} (@{username})"
-    return name or (f"@{username}" if username else fallback)
+    name = account_name(user)
+    if repository:
+        await repository.remember_account(user_id, name)
+    return name or fallback

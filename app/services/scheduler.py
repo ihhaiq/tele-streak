@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from app.services.rich_status import participation_text
 from app.database.repository import Repository
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.sticker_service import StickerService
@@ -86,14 +87,8 @@ class StreakScheduler:
                             name="warning",
                         )
 
-                    owner_missing = streak.owner_sent_day != today
-                    peer_missing = streak.peer_sent_day != today
-                    if owner_missing and peer_missing:
-                        missing = "أنتما لم ترسلا اليوم"
-                    elif owner_missing:
-                        missing = "صاحب الحساب لم يرسل اليوم"
-                    else:
-                        missing = "الطرف الثاني لم يرسل اليوم"
+                    participation = await self.repository.participant_status(streak)
+                    missing = participation_text(**participation, timezone_name=timezone_name)
 
                     notice_sent = False
                     if not transport_blocked:
@@ -107,7 +102,7 @@ class StreakScheduler:
                             await self.stickers.send_notice_text(
                                 connection_id=streak.business_connection_id,
                                 chat_id=streak.chat_id,
-                                text=f"⏰ بقي أقل من ساعتين. {missing} وقد ينقطع الستريك.",
+                                text=f"⏰ بقي أقل من ساعتين وقد ينقطع الستريك.\n{missing}",
                             )
                     if transport_blocked:
                         logger.warning(

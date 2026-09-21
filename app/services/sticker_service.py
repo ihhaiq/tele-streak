@@ -148,6 +148,8 @@ class StickerService:
         adventure_profile: Profile | None = None,
     ) -> None:
         connection_id = await self._active_connection(connection_id)
+        record = await self.repository.get_streak(connection_id, chat_id)
+        participation = await self.repository.participant_status(record) if record else {}
         rich_message = build_streak_rich_message(
             current=current,
             longest=longest,
@@ -160,6 +162,7 @@ class StickerService:
             streak_mode=streak_mode,
             timezone_name=timezone_name,
             adventure_profile=adventure_profile,
+            **participation,
         )
         kwargs = dict(
             chat_id=chat_id,
@@ -222,6 +225,7 @@ class StickerService:
                     streak_mode=streak_mode,
                     timezone_name=timezone_name,
                     adventure_profile=adventure_profile,
+                    **participation,
                 ),
                 reply_markup=navigation(owner_user_id, chat_id),
             )

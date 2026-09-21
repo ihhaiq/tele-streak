@@ -10,6 +10,7 @@ from app.streak_modes import STREAK_MODES
 
 from . import adventure_repository as adventures
 from .engine import Database
+from .participants import participant_names, save_account
 
 
 @dataclass(slots=True)
@@ -36,6 +37,9 @@ class StreakRecord:
     freezes_used: int
     created_at: str
     updated_at: str
+    last_contributor_user_id: int | None = None
+    last_contributor_name: str | None = None
+    last_contribution_day: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +108,31 @@ class Repository:
             freezes_used=int(row["freezes_used"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+            last_contributor_user_id=row["last_contributor_user_id"],
+            last_contributor_name=row["last_contributor_name"],
+            last_contribution_day=row["last_contribution_day"],
+        )
+
+    async def remember_account(self, user_id: int, name: str | None) -> None:
+        async with self.database.connect() as db:
+            await save_account(db, user_id, name)
+            await db.commit()
+
+    async def get_account_name(self, user_id: int) -> str | None:
+        async with self.database.connect() as db:
+            row = await (await db.execute(
+                "SELECT display_name FROM participant_accounts WHERE user_id=?", (user_id,)
+            )).fetchone()
+            return row["display_name"] if row else None
+
+    async def participant_status(self, streak: StreakRecord) -> dict:
+        async with self.database.connect() as db:
+            owner_name, peer_name = await participant_names(
+                db, streak.business_connection_id, streak.chat_id
+            )
+        return dict(
+            owner_name=owner_name, peer_name=peer_name,
+            owner_sent_day=streak.owner_sent_day, peer_sent_day=streak.peer_sent_day,
         )
 
     async def _move_owner_state_to_connection(
@@ -489,6 +518,7 @@ class Repository:
         choose_pose: Callable[[int, str | None], str],
         adventure: Activity | None = None,
         qualifies: bool = True,
+        sender_name: str | None = None,
     ) -> ActivityResult:
         if role not in {"owner", "peer"}:
             raise ValueError("role must be owner or peer")
@@ -529,6 +559,24 @@ class Repository:
                     WHERE business_connection_id=? AND chat_id=?
                     """,
                     (peer_user_id, connection_id, chat_id),
+                )
+
+            identity = await (await db.execute(
+                """SELECT b.owner_user_id, COALESCE(s.peer_user_id, s.chat_id) AS peer_id,
+                          s.owner_sent_day, s.peer_sent_day
+                FROM streaks s JOIN business_connections b USING(business_connection_id)
+                WHERE s.business_connection_id=? AND s.chat_id=?""",
+                (connection_id, chat_id),
+            )).fetchone()
+            sender_id = identity["owner_user_id"] if role == "owner" else identity["peer_id"]
+            await save_account(db, sender_id, sender_name or (adventure.name if adventure else None))
+            if qualifies and identity[sender_column] != today:
+                # نسجل أول إكمال للشرط فقط؛ الرسائل اللاحقة ما تبدل من أكمل اليوم.
+                await db.execute(
+                    """UPDATE streaks SET last_contributor_user_id=?,
+                    last_contributor_name=(SELECT display_name FROM participant_accounts WHERE user_id=?),
+                    last_contribution_day=? WHERE business_connection_id=? AND chat_id=?""",
+                    (sender_id, sender_id, today, connection_id, chat_id),
                 )
 
             if qualifies:
@@ -1029,7 +1077,10 @@ class Repository:
             cursor = await db.execute(
                 """
                 UPDATE streaks
-                SET streak_mode=?,
+                SET last_contributor_user_id=CASE WHEN last_completed_day=? THEN last_contributor_user_id END,
+                    last_contributor_name=CASE WHEN last_completed_day=? THEN last_contributor_name END,
+                    last_contribution_day=CASE WHEN last_completed_day=? THEN last_contribution_day END,
+                    streak_mode=?,
                     owner_sent_day=CASE
                         WHEN last_completed_day=? THEN owner_sent_day
                         ELSE NULL
@@ -1049,6 +1100,7 @@ class Repository:
                   )
                 """,
                 (
+                    today, today, today,
                     mode,
                     today,
                     today,
@@ -1102,6 +1154,8 @@ class Repository:
                 """
                 UPDATE streaks SET current_streak=0, owner_sent_day=NULL,
                     peer_sent_day=NULL, last_completed_day=NULL,
+                    last_contributor_user_id=NULL, last_contributor_name=NULL,
+                    last_contribution_day=NULL,
                     last_pose=NULL, updated_at=?
                 WHERE chat_id=? AND business_connection_id IN (
                     SELECT business_connection_id FROM business_connections WHERE owner_user_id=?

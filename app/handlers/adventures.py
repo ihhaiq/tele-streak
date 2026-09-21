@@ -159,6 +159,7 @@ def build_router(repository, adventures) -> Router:
                     record.business_connection_id
                 ),
                 adventure_profile=profile,
+                **await repository.participant_status(record),
             )
             rich = build_streak_rich_message(
                 **values,

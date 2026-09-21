@@ -11,6 +11,7 @@ from .tasks import (
     is_task_done,
     record_task_activity,
     task_spec,
+    task_label,
 )
 from .achievements import BADGES, add_badge, newly_unlocked
 EVENTS = {
@@ -170,7 +171,7 @@ def apply_activity(
         state["done"].append(task_key)
         award(
             spec.xp,
-            f"مهمة خلصت: {spec.label}",
+            f"مهمة خلصت: {task_label(spec, profile.stats['owner']['name'], profile.stats['peer']['name'])}",
             shared=spec.rule in shared_rules,
             credit_role=spec.role,
         )
@@ -184,7 +185,9 @@ def apply_activity(
     shield = False
     if completed and not state["completed"]:
         state["completed"] = True
-        award(20, "اكتمل يومكم 🤝", shared=True)
+        owner_name = profile.stats["owner"]["name"] or "الطرف الأول"
+        peer_name = profile.stats["peer"]["name"] or "الطرف الثاني"
+        award(20, f"اكتمل اليوم بواسطة: {owner_name} و{peer_name} 🤝", shared=True)
         yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
         good = activity.at.hour < 22
         if good:

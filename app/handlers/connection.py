@@ -4,6 +4,7 @@ from aiogram import Router
 from aiogram.types import BusinessConnection
 
 from app.database.repository import Repository
+from app.database.participants import account_name
 
 
 def build_router(repository: Repository, streaks=None) -> Router:
@@ -11,6 +12,7 @@ def build_router(repository: Repository, streaks=None) -> Router:
 
     @router.business_connection()
     async def on_business_connection(connection: BusinessConnection) -> None:
+        await repository.remember_account(connection.user.id, account_name(connection.user))
         await repository.upsert_connection(
             connection_id=connection.id,
             owner_user_id=connection.user.id,

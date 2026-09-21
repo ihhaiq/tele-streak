@@ -272,7 +272,12 @@ def test_free_shield_is_granted_at_completion_not_page_open(tmp_path, monkeypatc
 
 
 def test_daily_rollover_does_not_reroll_or_reveal_secrets(tmp_path, monkeypatch):
-    monkeypatch.setattr(module, "make_day", lambda *_: state())
+    def day_state(day, *_):
+        result = state()
+        result["task_slot"] = f"{day}:2"
+        return result
+
+    monkeypatch.setattr(module, "make_day", day_state)
 
     async def run():
         db, repo, data = await setup(tmp_path / "test.db")

@@ -110,6 +110,7 @@ async def _restore_status(
             streak_mode=streak.streak_mode,
             timezone_name=timezone_name,
             adventure_profile=profile,
+            **await repository.participant_status(streak),
         ),
     )
 

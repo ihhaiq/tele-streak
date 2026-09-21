@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputRichM
 
 from .achievements import BADGES
 from .rules import EVENTS, Profile, level_progress
-from .tasks import ALL_TASKS_BONUS_XP, active_task_specs
+from .tasks import ALL_TASKS_BONUS_XP, active_task_specs, task_label
 
 
 _NAV_ITEMS = (
@@ -151,7 +151,8 @@ def page_text(profile: Profile, state: dict, page: str) -> str:
     for spec in active_task_specs(state):
         mark = "✓" if spec.key in done else "○"
         multiplier = 2 if state.get("event") == "double" else 1
-        lines.append(f"{mark} {spec.label} · {spec.xp * multiplier} XP")
+        label = task_label(spec, profile.stats["owner"]["name"], profile.stats["peer"]["name"])
+        lines.append(f"{mark} {label} · {spec.xp * multiplier} XP")
     bonus = ALL_TASKS_BONUS_XP * (2 if state.get("event") == "double" else 1)
     lines.extend(["", f"إكمال الـ6: +{bonus} XP", "تتجدد كل 6 ساعات"])
     return "\n".join(lines)
@@ -166,8 +167,7 @@ def _rich_compare(profile: Profile, owner: int, chat: int) -> InputRichMessage:
 
     table = (
         "<table compact>"
-        "<tr><th>الطرف الأول</th><th>الطرف الثاني</th></tr>"
-        f"<tr><td><b>{first_name}</b></td><td><b>{second_name}</b></td></tr>"
+        f"<tr><th><b>{first_name}</b></th><th><b>{second_name}</b></th></tr>"
         f"<tr><td>بدأ: <b>{first['started']}</b></td><td>بدأ: <b>{second['started']}</b></td></tr>"
         f"<tr><td>تأخر: <b>{first['late']}</b></td><td>تأخر: <b>{second['late']}</b></td></tr>"
         f"<tr><td>أيام: <b>{first['days']}</b></td><td>أيام: <b>{second['days']}</b></td></tr>"
@@ -212,10 +212,11 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
 
     for spec in active_task_specs(state):
         mark = "✓" if spec.key in done else "○"
+        label = task_label(spec, profile.stats["owner"]["name"], profile.stats["peer"]["name"])
         rows.append(
             "<tr>"
             f"<td align=\"center\">{mark}</td>"
-            f"<td>{escape(spec.label)}</td>"
+            f"<td>{escape(label)}</td>"
             f"<td align=\"center\"><b>{spec.xp * multiplier}</b></td>"
             "</tr>"
         )

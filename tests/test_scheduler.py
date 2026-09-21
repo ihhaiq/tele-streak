@@ -10,6 +10,9 @@ class FakeRepository:
         self.streak = streak
         self.claimed = False
 
+    async def participant_status(self, streak):
+        return dict(owner_sent_day=streak.owner_sent_day, peer_sent_day=streak.peer_sent_day)
+
     async def list_monitorable_streaks(self):
         return [(self.streak, "UTC")]
 

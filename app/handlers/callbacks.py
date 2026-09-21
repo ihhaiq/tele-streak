@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.database.activation_repository import StreakActivationRepository
 from app.database.repository import Repository, StreakRecord
+from app.services.user_labels import user_label
 from app.handlers.private import dashboard_keyboard
 from app.services.rich_status import protection_text
 from app.streak_modes import streak_mode_label
@@ -90,12 +91,14 @@ def build_router(
             source_message_id=request.source_message_id,
         )
         await activations.finish_request(token)
+        owner_name = await user_label(bot, request.owner_user_id, "الطرف الأول", repository)
+        peer_name = await user_label(bot, request.peer_user_id, "الطرف الثاني", repository)
 
         if callback.message is not None:
             with suppress(TelegramBadRequest):
                 await callback.message.edit_text(
                     "✅ تم بدء الستريك.\n\n"
-                    "تم احتساب رسالة الطرف الثاني، والآن ينتظر البوت رسالتك اليوم."
+                    f"✅ أكمل اليوم: {peer_name}\n⏳ بانتظار: {owner_name}"
                 )
 
         with suppress(TelegramBadRequest):
@@ -104,7 +107,7 @@ def build_router(
                 business_connection_id=request.business_connection_id,
                 text=(
                     "🔥 تم قبول بدء الستريك. "
-                    "تم احتساب رسالة الطرف الثاني، وبانتظار رسالة صاحب الحساب اليوم."
+                    f"✅ أكمل اليوم: {peer_name}\n⏳ بانتظار: {owner_name}"
                 ),
             )
 
