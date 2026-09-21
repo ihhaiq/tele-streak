@@ -99,6 +99,9 @@ def test_notification_mute_and_guest_delivery():
         guests = SimpleNamespace(summon=AsyncMock(return_value=True))
         bot = SimpleNamespace(send_sticker=AsyncMock(), send_message=AsyncMock())
         service = AdventureService(bot, repo, guests)
+        service.snapshot = AsyncMock(
+            return_value=(Profile(), {"latest_notice_kind": "task"})
+        )
         completion = Completion(True, 1, "pose", False, True, True)
 
         await service.after_activity("bc", 20, completion)
@@ -109,6 +112,17 @@ def test_notification_mute_and_guest_delivery():
         await service.after_activity("bc", 20, completion)
         assert [c.kwargs["event"] for c in guests.summon.await_args_list] == [
             "celebration",
+        ]
+
+        guests.summon.reset_mock()
+        service.snapshot.return_value = (
+            Profile(),
+            {"latest_notice_kind": "general"},
+        )
+        await service.after_activity("bc", 20, completion)
+        assert [c.kwargs["event"] for c in guests.summon.await_args_list] == [
+            "celebration",
+            "adventure",
         ]
 
         guests.summon.reset_mock()
