@@ -104,6 +104,8 @@ def test_channel_success_uses_plain_channel_delivery_and_caches_file_id(tmp_path
         kwargs = bot.send_sticker.await_args.kwargs
         assert kwargs["chat_id"] == -10077
         assert "business_connection_id" not in kwargs
+        assert kwargs["reply_markup"].inline_keyboard[0][0].text == "🔥 1"
+        assert kwargs["reply_markup"].inline_keyboard[0][0].callback_data == "streak_days:1"
         repository.set_sticker_file_id.assert_awaited_once_with(
             "streak:1",
             "channel-file-id",
