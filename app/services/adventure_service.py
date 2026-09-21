@@ -24,7 +24,6 @@ from aiogram.types import (
 from app.adventures.views import navigation, progress_text
 from app.database.adventure_repository import AdventureRepository
 from app.story.renderer import StoryRenderer, write_celebration
-from app.story.youtube_music import YouTubeStoryMusic
 
 logger = logging.getLogger(__name__)
 
@@ -44,24 +43,13 @@ class AdventureService:
         *,
         share_dir: Path | None = None,
         share_ttl_seconds: int = 900,
-        youtube_cookie_file: Path | None = None,
-        youtube_cookies: str | None = None,
-        youtube_cookies_b64: str | None = None,
-        youtube_pot_provider_home: Path | None = None,
-        music_attempts: int = 3,
     ):
         self.bot = bot
         self.repository = repository
         self.data = AdventureRepository(repository.database)
         self.guests = guests
         self.renderer = StoryRenderer()
-        self.music = YouTubeStoryMusic(
-            cookie_file=youtube_cookie_file,
-            cookies_raw=youtube_cookies,
-            cookies_b64=youtube_cookies_b64,
-            pot_provider_home=youtube_pot_provider_home,
-            attempts=music_attempts,
-        )
+        self._music_uploads: dict[tuple[str, int], str] = {}
         self.share_dir = Path(share_dir) if share_dir else None
         if self.share_dir is not None:
             self.share_dir.mkdir(parents=True, exist_ok=True)
@@ -159,6 +147,7 @@ class AdventureService:
         owner: int,
         kind: str,
         folder: Path,
+        music_file_id: str | None = None,
     ) -> tuple[Path, Path, str | None]:
         profile, _ = await self.snapshot(
             record.business_connection_id, record.chat_id
@@ -190,7 +179,10 @@ class AdventureService:
             raise ValueError("unsupported story kind")
 
         duration = 5 if kind == "video5" else 10
-        track = await asyncio.to_thread(self.music.fetch, folder, duration)
+        music_path = None
+        if music_file_id:
+            music_path = folder / "uploaded-audio"
+            await self.bot.download(music_file_id, destination=music_path)
         job = asyncio.create_task(
             asyncio.to_thread(
                 self.renderer.render,
@@ -199,7 +191,7 @@ class AdventureService:
                 names=names,
                 photos=photos,
                 duration=duration,
-                music_path=track.path,
+                music_path=music_path,
             )
         )
         try:
@@ -209,7 +201,79 @@ class AdventureService:
                 await job
             finally:
                 raise
-        return video, cover, track.title
+        return video, cover, "الأغنية المضافة" if music_path else None
+
+    async def begin_music_upload(self, token: str, user_id: int) -> str | None:
+        request = await self.data.get_story_publish_request(token)
+        if request is None:
+            return None
+        peer = await self.repository.get_owner_streak(
+            request.owner_user_id, request.chat_id
+        )
+        if peer is None or user_id not in {
+            request.owner_user_id,
+            peer.peer_user_id or peer.chat_id,
+        }:
+            return None
+        self._music_uploads[(request.business_connection_id, request.chat_id)] = token
+        return request.business_connection_id
+
+    async def handle_music_upload(self, message) -> bool:
+        connection_id = message.business_connection_id
+        if not connection_id or not (message.audio or message.voice):
+            return False
+        key = (connection_id, message.chat.id)
+        token = self._music_uploads.pop(key, None)
+        if not token:
+            return False
+        audio = message.audio or message.voice
+        if getattr(audio, "file_size", 0) and audio.file_size > 25 * 1024 * 1024:
+            await self.bot.send_message(
+                chat_id=message.chat.id,
+                business_connection_id=connection_id,
+                text="الأغنية كبيرة حيل. الحد الأقصى 25MB.",
+            )
+            return True
+        if getattr(audio, "duration", 0) and audio.duration > 600:
+            await self.bot.send_message(
+                chat_id=message.chat.id,
+                business_connection_id=connection_id,
+                text="الأغنية طويلة حيل. الحد الأقصى 10 دقائق.",
+            )
+            return True
+        request = await self.data.get_story_publish_request(token)
+        if request is None or message.from_user is None:
+            return True
+        peer = await self.repository.get_owner_streak(request.owner_user_id, request.chat_id)
+        if peer is None or message.from_user.id not in {request.owner_user_id, peer.peer_user_id or peer.chat_id}:
+            return True
+        file_id = message.audio.file_id if message.audio else message.voice.file_id
+        error = await self.prepare_story_preview(
+            peer, request.owner_user_id, request.kind,
+            music_file_id=file_id,
+            music_uploader_id=message.from_user.id,
+            reply_to_message_id=message.message_id,
+        )
+        if error:
+            await self.bot.send_message(
+                chat_id=message.chat.id,
+                business_connection_id=connection_id,
+                text=error,
+            )
+        return True
+
+    async def delete_story_music(self, token: str, user_id: int) -> str | None:
+        request = await self.data.get_story_publish_request(token)
+        if request is None:
+            return "انتهت صلاحية المعاينة."
+        peer = await self.repository.get_owner_streak(request.owner_user_id, request.chat_id)
+        if peer is None or user_id not in {request.owner_user_id, peer.peer_user_id or peer.chat_id}:
+            return "فقط طرفا الستريك يگدرون يغيرون الأغنية."
+        error = await self.prepare_story_preview(
+            peer, request.owner_user_id, request.kind,
+            music_file_id=None,
+        )
+        return error
 
     @staticmethod
     def _unlink_paths(paths) -> None:
@@ -246,6 +310,8 @@ class AdventureService:
         kind: str,
         *,
         reply_to_message_id: int | None = None,
+        music_file_id: str | None = None,
+        music_uploader_id: int | None = None,
     ) -> str | None:
         if kind not in {"image", "video5", "video10"}:
             return "نوع الستوري غير مدعوم."
@@ -274,7 +340,7 @@ class AdventureService:
                 folder = Path(directory)
                 try:
                     media, thumbnail, music_title = await self._render_story_assets(
-                        record, owner, kind, folder
+                        record, owner, kind, folder, music_file_id
                     )
                 except RuntimeError as error:
                     await self.data.release_story_claim(
@@ -282,14 +348,6 @@ class AdventureService:
                         record.chat_id,
                         claim_timestamp,
                     )
-                    if "YouTube" in str(error):
-                        logger.warning(
-                            "STORY_YOUTUBE_PREVIEW_FAILED connection=%s chat=%s error=%s",
-                            record.business_connection_id,
-                            record.chat_id,
-                            error,
-                        )
-                        return "تعذر جلب أغنية من YouTube هالمرة، جرب مرة ثانية 🎵"
                     raise
                 except Exception:
                     await self.data.release_story_claim(
@@ -319,17 +377,33 @@ class AdventureService:
                 thumbnail_path=str(thumb_target),
                 days=record.current_streak,
                 ttl_seconds=self.share_ttl_seconds,
+                music_file_id=music_file_id,
+                music_uploader_id=music_uploader_id,
             )
             await asyncio.to_thread(self._unlink_paths, old_paths)
 
+            music_buttons = [
+                InlineKeyboardButton(
+                    text="🎵 تغيير الأغنية" if request.music_file_id else "🎵 أضف أغنية",
+                    callback_data=f"story_music:{request.token}",
+                )
+            ]
+            if request.music_file_id:
+                music_buttons.append(
+                    InlineKeyboardButton(
+                        text="🗑 حذف الأغنية",
+                        callback_data=f"story_music_delete:{request.token}",
+                    )
+                )
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
                             text="🚀 نشر الستوري",
                             callback_data=f"story_publish:{request.token}",
-                        )
-                    ]
+                        ),
+                    ],
+                    music_buttons,
                 ]
             )
             caption = (
@@ -471,4 +545,4 @@ class AdventureService:
 
 
     async def close(self) -> None:
-        await asyncio.to_thread(self.music.close)
+        return None

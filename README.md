@@ -50,11 +50,7 @@ Optional settings:
 - `STICKER_SET_OWNER_ID` — required numeric developer Telegram ID. The three
   packs are global and shared by all bot users; ownership never follows users.
 - `STICKER_SET_TITLE` — visible Telegram sticker-set title.
-- `STORY_MUSIC_ATTEMPTS` — YouTube search/download attempts for each story video (default 3).
-- `STORY_YOUTUBE_COOKIES` — preferred Railway secret: paste the Netscape `cookies.txt` content exactly as exported. It is written only to a temporary `0600` file and deleted on shutdown.
-- `STORY_YOUTUBE_COOKIES_B64` — optional Base64 fallback when the platform cannot preserve multiline secrets.
-- `STORY_YOUTUBE_COOKIE_FILE` — optional local-file alternative for self-hosted deployments.
-- `STORY_YOUTUBE_POT_PROVIDER_HOME` — bgutil PO-token server directory; Docker sets this to `/opt/bgutil-ytdlp-pot-provider/server`.
+- `🎵 أضف أغنية` — بعد معاينة الفيديو، ارفع ملفًا صوتيًا أو بصمة صوتية لإضافتها.
 - `STORY_SHARE_TTL_SECONDS` — how long a preview can still be published (default 900 seconds).
 
 ## Commands
@@ -180,13 +176,15 @@ the preview directly into the same chat with a `🚀 نشر الستوري` butt
 public preview domain or Mini App is needed. Only after one of the two streak
 participants presses it does the bot call `postStory`.
 
-Video stories always get a short random music clip from YouTube. The picker
-randomly alternates between Arabic and foreign search pools, favors official
-audio/video results, rejects obvious AI/Suno/Udio, karaoke, slowed and remix
-results, and downloads only the short range needed for the 5/10-second story.
-There is deliberately no generated-melody fallback: if YouTube fails after the
-configured retries, video generation fails clearly instead of silently using the
-old synthetic track.
+Video stories are silent by default. After the preview appears, either
+participant can press `🎵 أضف أغنية` and send an audio file or voice message;
+the bot regenerates the preview with that uploaded audio. Telegram `file_id` is
+used for the current preview, so the bot does not search or download music from
+external services.
+
+The preview also supports changing or deleting the uploaded audio. Audio
+metadata is stored with the publish request, while temporary rendered files
+are removed when a request expires, is replaced, or is published.
 
 See [the implementation and operations guide](docs/ADVENTURES.md) for the data
 model, reward rules, migration behavior, testing, and deployment checks.
@@ -206,27 +204,3 @@ to prevent duplicate posting, checks the Business connection and permission,
 then calls Telegram `postStory`. The original local file is removed immediately
 after a successful publish or when the request expires/replaces an older pending
 preview.
-
-YouTube extraction uses current `yt-dlp[default]`, Deno/EJS and the bgutil PO Token provider. The bot tries `mweb` with a generated PO token first, then `web_safari`, `android_vr`, and finally the default extractor. This is designed for cloud hosts such as Railway where YouTube may return 403 or bot-check responses. `STORY_MUSIC_ATTEMPTS` controls retries. `STORY_YOUTUBE_COOKIE_FILE` remains optional.
-
-
-### Railway YouTube cookies
-
-If YouTube returns `Sign in to confirm you're not a bot` on Railway, PO tokens
-alone may not be enough for the datacenter IP. Export a Netscape-format
-`cookies.txt` from a browser session you control and paste its contents directly
-into the Railway secret `STORY_YOUTUBE_COOKIES`.
-
-The raw multiline secret is preferred. `STORY_YOUTUBE_COOKIES_B64` remains
-available only as a fallback for platforms that do not preserve multiline values.
-If both are set, `STORY_YOUTUBE_COOKIES` takes priority.
-
-Do not commit the cookies file or either secret value, and do not paste them into
-issues, logs, or chat. The bot validates the Netscape header, writes the cookie
-content to a random file under the OS temporary directory with mode `0600`,
-passes that path to yt-dlp, and deletes the temporary file during shutdown.
-
-If YouTube still returns the bot-check after valid fresh cookies, the remaining
-problem is the Railway egress IP/session reputation rather than the story
-renderer. In that case use a different hosting egress/proxy that is authorized
-for your own YouTube session.

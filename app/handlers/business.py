@@ -91,6 +91,8 @@ def build_router(
 
     @router.business_message()
     async def on_business_message(message: Message) -> None:
+        if adventures and await adventures.handle_music_upload(message):
+            return
         incoming_connection_id = message.business_connection_id
         connection_id = (
             await repository.resolve_active_connection_id(incoming_connection_id)

@@ -4,7 +4,8 @@ from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputRichMessage
 
-from .rules import BADGES, EVENTS, Profile, level_progress
+from .achievements import BADGES
+from .rules import EVENTS, Profile, level_progress
 from .tasks import ALL_TASKS_BONUS_XP, active_task_specs
 
 

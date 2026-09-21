@@ -12,6 +12,7 @@ from .tasks import (
     record_task_activity,
     task_spec,
 )
+from .achievements import BADGES, add_badge, newly_unlocked
 EVENTS = {
     "double": "يوم XP مضاعف ✨",
     "shield": "هدية حماية عند إكمال اليوم 🧊",
@@ -19,12 +20,6 @@ EVENTS = {
     "rare": "حدث نادر 🎁",
     "fast": "يوم سريع: كملوا خلال ١٠ دقائق ⚡",
     "calm": "يوم هدوء: كملوا قبل ١٠ بالليل 🌙",
-}
-BADGES = {
-    "together": ("أول مغامرة 🤝", "أكملتوا مجموعة مهام كاملة."),
-    "rhythm": ("على نفس الموجة 🎵", "وصلتوا Combo x5."),
-    "secret_sync": ("توأم اللحظة 💫", "أول مشاركتين بفارق ٣٠ ثانية أو أقل."),
-    "secret_lucky": ("ضيف Jake السري 🍀", "لقيتوا الهدية السرية بيوم المهمة النادرة."),
 }
 
 
@@ -183,8 +178,7 @@ def apply_activity(
     if len(state["done"]) == len(state["tasks"]) and not state["all_bonus"]:
         state["all_bonus"] = True
         award(ALL_TASKS_BONUS_XP, "خلصتوا الـ6 مهام", shared=True)
-        if "together" not in profile.badges:
-            profile.badges.append("together")
+        if add_badge(profile, "together"):
             notices.append("فتحتوا إنجاز: أول مغامرة 🤝")
 
     shield = False
@@ -218,16 +212,14 @@ def apply_activity(
             award(30, "فريق الصاروخ ⚡", shared=True)
         elif event == "calm" and good:
             award(20, "يوم هادي وحلو 🌙", shared=True)
-        unlock = []
-        if profile.combo >= 5:
-            unlock.append("rhythm")
-        if gap is not None and gap <= 30:
-            unlock.append("secret_sync")
-        if event == "rare" and state["secret_roll"]:
-            unlock.append("secret_lucky")
+        unlock = newly_unlocked(
+            combo=profile.combo,
+            gap=gap,
+            event=event,
+            secret_roll=state["secret_roll"],
+        )
         for badge in unlock:
-            if badge not in profile.badges:
-                profile.badges.append(badge)
+            if add_badge(profile, badge):
                 award(30, f"مفاجأة! {BADGES[badge][0]}", shared=True)
     previous_level = profile.shared_level
     profile.shared_xp += gained

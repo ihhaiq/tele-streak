@@ -202,9 +202,7 @@ class StoryRenderer:
         directory.mkdir(parents=True, exist_ok=True)
         frames = directory / "frames"
         frames.mkdir()
-        if music_path is None or not music_path.is_file():
-            raise FileNotFoundError("YouTube story music clip is missing")
-        music = music_path
+        music = music_path if music_path and music_path.is_file() else None
         background = Image.new("RGB", (WIDTH, HEIGHT))
         draw = ImageDraw.Draw(background)
         palette = ("#ffd56b", "#7ce3d2", "#e4a9ff", "#ff969f")
@@ -274,8 +272,7 @@ class StoryRenderer:
                 )
             image.convert("RGB").save(frames / f"{frame:04}.jpg", quality=92)
         output = directory / "streak-story.mp4"
-        subprocess.run(
-            [
+        command = [
                 "ffmpeg",
                 "-nostdin",
                 "-hide_banner",
@@ -286,14 +283,12 @@ class StoryRenderer:
                 str(FPS),
                 "-i",
                 str(frames / "%04d.jpg"),
-                "-i",
-                str(music),
+                *(["-i", str(music)] if music else []),
                 "-t",
                 str(duration),
                 "-map",
                 "0:v:0",
-                "-map",
-                "1:a:0",
+                *(["-map", "1:a:0"] if music else []),
                 "-c:v",
                 "libx265",
                 "-preset",
@@ -312,16 +307,17 @@ class StoryRenderer:
                 "0",
                 "-tag:v",
                 "hvc1",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "128k",
-                "-af",
-                f"afade=t=in:st=0:d=0.2,afade=t=out:st={duration - 0.4}:d=0.4",
                 "-movflags",
                 "+faststart",
-                str(output),
-            ],
+        ]
+        if music:
+            command += [
+                "-c:a", "aac", "-b:a", "128k", "-af",
+                f"afade=t=in:st=0:d=0.2,afade=t=out:st={duration - 0.4}:d=0.4",
+            ]
+        command += [str(output)]
+        subprocess.run(
+            command,
             check=True,
             timeout=90,
             capture_output=True,

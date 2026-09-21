@@ -93,6 +93,39 @@ def build_router(
                     text=error_text,
                 )
 
+    @router.callback_query(F.data.startswith("story_music:"))
+    async def add_story_music(callback: CallbackQuery, bot: Bot) -> None:
+        if adventures is None:
+            await callback.answer("إضافة الأغنية غير متاحة حاليًا.", show_alert=True)
+            return
+        token = (callback.data or "").split(":", 1)[-1]
+        connection_id = await adventures.begin_music_upload(token, callback.from_user.id)
+        if not connection_id:
+            await callback.answer("انتهت المعاينة أو ما عندك صلاحية.", show_alert=True)
+            return
+        await callback.answer("أرسل ملف صوتي أو بصمة صوتية الآن 🎵", show_alert=True)
+        if isinstance(callback.message, Message):
+            await bot.send_message(
+                chat_id=callback.message.chat.id,
+                business_connection_id=connection_id,
+                text="أرسل الأغنية كملف صوتي أو بصمة صوتية، وراح أعيد تجهيز الستوري بيها.",
+            )
+
+    @router.callback_query(F.data.startswith("story_music_delete:"))
+    async def delete_story_music(callback: CallbackQuery, bot: Bot) -> None:
+        if adventures is None:
+            await callback.answer("إدارة الأغنية غير متاحة حاليًا.", show_alert=True)
+            return
+        token = (callback.data or "").split(":", 1)[-1]
+        await callback.answer("جاري حذف الأغنية وإعادة تجهيز الستوري 🎬")
+        error = await adventures.delete_story_music(token, callback.from_user.id)
+        if error and isinstance(callback.message, Message):
+            await bot.send_message(
+                chat_id=callback.message.chat.id,
+                business_connection_id=callback.message.business_connection_id,
+                text=error,
+            )
+
     @router.callback_query(F.data.startswith("streak_revive:approve:"))
     async def approve_revive(callback: CallbackQuery, bot: Bot) -> None:
         token = (callback.data or "").rsplit(":", 1)[-1]

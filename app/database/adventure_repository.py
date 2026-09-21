@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS story_publish_requests (
  created_at REAL NOT NULL,
  expires_at REAL NOT NULL,
  status TEXT NOT NULL DEFAULT 'pending',
+ music_file_id TEXT,
+ music_uploader_id INTEGER,
  published_story_id INTEGER,
  FOREIGN KEY (business_connection_id) REFERENCES business_connections(business_connection_id) ON DELETE CASCADE
 );
@@ -60,6 +62,8 @@ class StoryPublishRequest:
     expires_at: float
     status: str
     published_story_id: int | None = None
+    music_file_id: str | None = None
+    music_uploader_id: int | None = None
 
 
 def _story_request(row) -> StoryPublishRequest:
@@ -80,6 +84,8 @@ def _story_request(row) -> StoryPublishRequest:
             if row["published_story_id"] is not None
             else None
         ),
+        music_file_id=str(row["music_file_id"]) if row["music_file_id"] else None,
+        music_uploader_id=(int(row["music_uploader_id"]) if row["music_uploader_id"] is not None else None),
     )
 
 
@@ -262,6 +268,8 @@ class AdventureRepository:
         media_path: str,
         thumbnail_path: str,
         days: int,
+        music_file_id: str | None = None,
+        music_uploader_id: int | None = None,
         ttl_seconds: int = 900,
     ) -> tuple[StoryPublishRequest, list[str]]:
         now = time.time()
@@ -290,8 +298,9 @@ class AdventureRepository:
             await db.execute(
                 """INSERT INTO story_publish_requests(
                     token, business_connection_id, chat_id, owner_user_id, kind,
-                    media_path, thumbnail_path, days, created_at, expires_at, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                    media_path, thumbnail_path, days, created_at, expires_at, status,
+                    music_file_id, music_uploader_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
                 (
                     token,
                     connection_id,
@@ -303,6 +312,8 @@ class AdventureRepository:
                     days,
                     now,
                     expires_at,
+                    music_file_id,
+                    music_uploader_id,
                 ),
             )
             await db.commit()
@@ -318,6 +329,8 @@ class AdventureRepository:
             created_at=now,
             expires_at=expires_at,
             status="pending",
+            music_file_id=music_file_id,
+            music_uploader_id=music_uploader_id,
         )
         return request, old_paths
 
