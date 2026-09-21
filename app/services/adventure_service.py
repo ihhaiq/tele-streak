@@ -107,7 +107,7 @@ class AdventureService:
                     )
             except Exception:
                 logger.exception("STREAK_CELEBRATION_DELIVERY_FAILED")
-        if completion.adventure_notice:
+        if completion.adventure_notice and record.task_notifications_enabled:
             try:
                 sent = await self.guests.summon(
                     event="adventure", connection_id=connection_id, chat_id=chat_id
