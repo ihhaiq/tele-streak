@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from PIL import Image, ImageDraw
 
 FPS = 30
+RIG_SUPERSAMPLE = 1.25
 HAND_Y = 655.0
 LEFT_HAND = (205.0, HAND_Y)
 RIGHT_HAND = (515.0, HAND_Y)
@@ -662,12 +663,18 @@ class JakeRig:
 
     def render(self, t: float, pose: JakePose) -> Image.Image:
         source = self._with_blink(pose.blink)
-        width = max(1, round(source.width * pose.width_scale))
-        height = max(1, round(source.height * pose.height_scale))
+        final_width = max(1, round(source.width * pose.width_scale))
+        final_height = max(1, round(source.height * pose.height_scale))
+        width = max(1, round(final_width * RIG_SUPERSAMPLE))
+        height = max(1, round(final_height * RIG_SUPERSAMPLE))
         actor = source.resize((width, height), Image.Resampling.LANCZOS)
 
-        pad = 28
-        canvas = Image.new("RGBA", (width + pad * 2, height + pad * 2), (0, 0, 0, 0))
+        pad = round(28 * RIG_SUPERSAMPLE)
+        canvas = Image.new(
+            "RGBA",
+            (width + pad * 2, height + pad * 2),
+            (0, 0, 0, 0),
+        )
         canvas.alpha_composite(actor, (pad, pad))
 
         sx = width / self.source.width
@@ -687,14 +694,14 @@ class JakeRig:
 
         def displacement(x: float, y: float) -> tuple[float, float]:
             normalized_y = clamp01((y - pad) / max(1.0, height))
-            dx = pose.sway * (1.0 - normalized_y) ** 0.72
+            dx = pose.sway * RIG_SUPERSAMPLE * (1.0 - normalized_y) ** 0.72
             dy = 0.0
 
             # الرأس يتبع الجسم لكن بتأخير/نود خفيف.
             head_distance = ((x - head[0]) / 105.0) ** 2 + ((y - head[1]) / 90.0) ** 2
             head_weight = math.exp(-2.2 * head_distance)
-            dy += pose.head_nod * head_weight
-            dx += pose.sway * 0.20 * head_weight
+            dy += pose.head_nod * RIG_SUPERSAMPLE * head_weight
+            dx += pose.sway * RIG_SUPERSAMPLE * 0.20 * head_weight
 
             # كل يد لها joint محلي يتبع الكرة قبل الالتقاط وبعد الرمي.
             for anchor, offset in zip(
@@ -703,8 +710,8 @@ class JakeRig:
             ):
                 distance = ((x - anchor[0]) / 105.0) ** 2 + ((y - anchor[1]) / 92.0) ** 2
                 weight = math.exp(-2.6 * distance)
-                dx += offset[0] * weight
-                dy += offset[1] * weight
+                dx += offset[0] * RIG_SUPERSAMPLE * weight
+                dy += offset[1] * RIG_SUPERSAMPLE * weight
 
             return dx, dy
 
@@ -727,9 +734,16 @@ class JakeRig:
                     source_quad.extend((x - dx, y - dy))
                 mesh.append(((x0, y0, x1, y1), tuple(source_quad)))
 
-        return canvas.transform(
+        warped = canvas.transform(
             canvas.size,
             Image.Transform.MESH,
             mesh,
             resample=Image.Resampling.BICUBIC,
+        )
+        return warped.resize(
+            (
+                max(1, round(warped.width / RIG_SUPERSAMPLE)),
+                max(1, round(warped.height / RIG_SUPERSAMPLE)),
+            ),
+            Image.Resampling.LANCZOS,
         )
