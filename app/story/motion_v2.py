@@ -178,8 +178,6 @@ def ball_motion(
             0.0,
             -shifted,
             0.0,
-            max(0.0, hold - caught),
-            max(0.0, caught),
         )
 
     # نحتاج دورة متغيرة لأن بعض رميات 10s/milestone أطول.
@@ -242,6 +240,8 @@ def ball_motion(
             target_hand,
             (cycle + index) % 2 == 0,
             0.0,
+            max(0.0, hold - caught),
+            max(0.0, caught),
         )
 
     # آخر جزء من الفيديو يلتقط الكرتين ويثبتهم بدل ما ينقطع الفيديو وسط رمية.
