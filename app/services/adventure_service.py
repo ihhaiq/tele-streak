@@ -226,6 +226,21 @@ class AdventureService:
         token = self._music_uploads.pop(key, None)
         if not token:
             return False
+        audio = message.audio or message.voice
+        if getattr(audio, "file_size", 0) and audio.file_size > 25 * 1024 * 1024:
+            await self.bot.send_message(
+                chat_id=message.chat.id,
+                business_connection_id=connection_id,
+                text="الأغنية كبيرة حيل. الحد الأقصى 25MB.",
+            )
+            return True
+        if getattr(audio, "duration", 0) and audio.duration > 600:
+            await self.bot.send_message(
+                chat_id=message.chat.id,
+                business_connection_id=connection_id,
+                text="الأغنية طويلة حيل. الحد الأقصى 10 دقائق.",
+            )
+            return True
         request = await self.data.get_story_publish_request(token)
         if request is None or message.from_user is None:
             return True
