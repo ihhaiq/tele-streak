@@ -4,7 +4,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 FPS = 30
 RIG_SUPERSAMPLE = 1.25
