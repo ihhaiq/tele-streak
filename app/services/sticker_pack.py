@@ -182,6 +182,9 @@ class StickerPack:
     def cached_file_id(self, key: str) -> str | None:
         return self._file_ids.get(key)
 
+    def invalidate_cached_file_id(self, key: str) -> None:
+        self._file_ids.pop(key, None)
+
     def start_sync(self, connection_id: str) -> None:
         if self._sync_task is not None and not self._sync_task.done():
             return
