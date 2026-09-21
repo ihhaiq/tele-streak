@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+import logging
+
 from aiogram import Router
 from aiogram.types import Message
 
 from app.database.channel_repository import ChannelStreakRepository
 from app.services.channel_streak_service import ChannelStreakService
 from app.services.channel_permissions import channel_status_text
+from app.services.sticker_service import StickerService
+
+logger = logging.getLogger(__name__)
 
 
-def build_router(repository: ChannelStreakRepository, streaks: ChannelStreakService) -> Router:
+def build_router(
+    repository: ChannelStreakRepository,
+    streaks: ChannelStreakService,
+    stickers: StickerService,
+) -> Router:
     router = Router(name="channel_streaks")
 
     @router.channel_post()
@@ -21,6 +30,24 @@ def build_router(repository: ChannelStreakRepository, streaks: ChannelStreakServ
             streak = await repository.get(message.chat.id)
             await message.answer(channel_status_text(streak, streaks.timezone.key))
             return
-        await streaks.register_post(message)
+        streak, completed = await streaks.register_post(message)
+        if not completed or streak is None:
+            return
+
+        try:
+            await stickers.send_channel_success(
+                chat_id=message.chat.id,
+                days=streak.current_streak,
+            )
+            if streak.current_streak == 1:
+                await stickers.send_channel_celebration(
+                    chat_id=message.chat.id,
+                )
+        except Exception:
+            logger.exception(
+                "CHANNEL_STREAK_CELEBRATION_FAILED chat=%s days=%s",
+                message.chat.id,
+                streak.current_streak,
+            )
 
     return router
