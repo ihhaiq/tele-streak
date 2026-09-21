@@ -452,6 +452,53 @@ def test_rare_event_secret_unlock_is_once():
     assert profile.shared_xp == xp
 
 
+def test_single_task_completion_emits_notice_and_persists_done_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        module,
+        "make_day",
+        lambda *_: state(("owner_texts_1", "peer_photo_1")),
+    )
+
+    async def run():
+        db, repo, data = await setup(tmp_path / "test.db")
+        try:
+            result = await send(repo, 1, words=3)
+            assert not result.completed
+            assert result.adventure_notice
+
+            profile, daily = await data.snapshot("bc", 20, at())
+            assert daily["done"] == ["owner_texts_1"]
+            assert "مهمة خلصت:" in daily["latest_notice"]
+            assert "حسين يرسل 1 رسالة نصية" in daily["latest_notice"]
+            assert profile.shared_xp > 0
+
+            second = await send(repo, 2, words=3)
+            assert not second.adventure_notice
+            _, same = await data.snapshot("bc", 20, at())
+            assert same["done"] == ["owner_texts_1"]
+        finally:
+            await db.close()
+
+    asyncio.run(run())
+
+
+def test_completed_task_is_checked_and_struck_in_fresh_views():
+    profile = Profile()
+    profile.stats["owner"]["name"] = "حسين"
+    profile.stats["peer"]["name"] = "أحمد"
+    daily = state(("owner_texts_1", "peer_photo_1"))
+    daily["done"] = ["owner_texts_1"]
+
+    text = page_text(profile, daily, "tasks")
+    assert "✅ حسين يرسل 1 رسالة نصية" in text
+    assert "○ أحمد يرسل 1 صورة" in text
+
+    rich = rich_page(profile, daily, "tasks", 10, 20)
+    assert "✅" in rich.html
+    assert "<s>حسين يرسل 1 رسالة نصية</s>" in rich.html
+    assert "<s>أحمد يرسل 1 صورة</s>" not in rich.html
+
+
 def test_task_catalog_has_more_than_300_real_tasks():
     assert len(TASK_CATALOG) > 300
     assert len(TASK_CATALOG) == len(set(TASK_CATALOG))

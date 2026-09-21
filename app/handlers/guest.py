@@ -112,6 +112,30 @@ async def _numbered_sticker_id(
     return pack_id
 
 
+async def _refresh_numbered_sticker_id(
+    stickers: StickerService,
+    repository: Repository,
+    *,
+    connection_id: str,
+    days: int,
+) -> str | None:
+    key = f"streak:{days}"
+    await repository.delete_sticker_file_id(key)
+    stickers.pack.invalidate_cached_file_id(str(days))
+    try:
+        pack_id = await stickers.pack.refresh_numbered_file_id(days)
+    except Exception:
+        logger.exception(
+            "STREAK_GUEST_STICKER_REFRESH_FAILED connection=%s days=%s",
+            connection_id,
+            days,
+        )
+        return None
+    if pack_id:
+        await repository.set_sticker_file_id(key, pack_id)
+    return pack_id
+
+
 async def _special_sticker_id(
     stickers: StickerService,
     repository: Repository,
@@ -394,72 +418,115 @@ def build_router(
                 )
 
         try:
-            await message.answer_guest_query(result)
-        except TelegramBadRequest as error:
-            if event == "broken_notice":
-                logger.warning(
-                    "STREAK_GUEST_BROKEN_RICH_REJECTED connection=%s chat=%s error=%s",
-                    request.business_connection_id,
-                    request.chat_id,
-                    error,
-                )
-                fallback = InlineQueryResultArticle(
-                    id=f"streak-broken-notice-text-{token}",
-                    title="انقطع الستريك",
-                    input_message_content=InputTextMessageContent(
-                        message_text=BROKEN_NOTICE_TEXT,
-                    ),
-                )
-                await message.answer_guest_query(fallback)
-            elif event == "status" and streak is not None:
-                logger.warning(
-                    "STREAK_GUEST_RICH_REJECTED connection=%s chat=%s error=%s",
-                    request.business_connection_id,
-                    request.chat_id,
-                    error,
-                )
-                fallback = InlineQueryResultArticle(
-                    id=f"streak-text-{token}",
-                    title="حالة الستريك",
-                    reply_markup=navigation(owner_user_id, request.chat_id) if owner_user_id else None,
-                    input_message_content=InputTextMessageContent(
-                        message_text=build_streak_fallback_text(
-                            current=streak.current_streak,
-                            longest=streak.longest_streak,
-                            completed_days=streak.completed_days,
-                            break_count=streak.break_count,
-                            freeze_count=streak.freeze_count,
-                            last_completed_day=streak.last_completed_day,
-                            streak_mode=streak.streak_mode,
-                            timezone_name=timezone_name,
-                            adventure_profile=profile,
-                            **participation,
-                        ),
-                    ),
-                )
-                await message.answer_guest_query(fallback)
-            else:
-                raise
-
-        await repository.finish_guest_streak_request(token)
-        if request.summon_message_id is not None:
             try:
-                await _cleanup_summon(message, request)
-            except (TelegramBadRequest, TelegramForbiddenError) as error:
-                logger.info(
-                    "STREAK_GUEST_SUMMON_DELETE_SKIPPED event=%s connection=%s chat=%s error=%s",
-                    event,
-                    request.business_connection_id,
-                    request.chat_id,
-                    error,
-                )
-            else:
-                logger.info(
-                    "STREAK_GUEST_SENT event=%s connection=%s chat=%s",
-                    event,
-                    request.business_connection_id,
-                    request.chat_id,
-                )
+                await message.answer_guest_query(result)
+            except TelegramBadRequest as error:
+                if event == "success" and streak is not None and streak.current_streak > 0:
+                    logger.warning(
+                        "STREAK_GUEST_SUCCESS_STICKER_REJECTED connection=%s chat=%s days=%s error=%s",
+                        request.business_connection_id,
+                        request.chat_id,
+                        streak.current_streak,
+                        error,
+                    )
+                    fresh_file_id = await _refresh_numbered_sticker_id(
+                        stickers,
+                        repository,
+                        connection_id=request.business_connection_id,
+                        days=streak.current_streak,
+                    )
+                    delivered = False
+                    if fresh_file_id:
+                        retry = InlineQueryResultCachedSticker(
+                            id=f"streak-success-refresh-{token}",
+                            sticker_file_id=fresh_file_id,
+                            reply_markup=streak_keyboard(streak.current_streak),
+                        )
+                        try:
+                            await message.answer_guest_query(retry)
+                            delivered = True
+                        except TelegramBadRequest as retry_error:
+                            logger.warning(
+                                "STREAK_GUEST_SUCCESS_STICKER_REFRESH_REJECTED connection=%s chat=%s days=%s error=%s",
+                                request.business_connection_id,
+                                request.chat_id,
+                                streak.current_streak,
+                                retry_error,
+                            )
+                    if not delivered:
+                        fallback = InlineQueryResultArticle(
+                            id=f"streak-success-fallback-{token}",
+                            title="الستريك",
+                            reply_markup=streak_keyboard(streak.current_streak),
+                            input_message_content=InputTextMessageContent(
+                                message_text=f"🔥 الستريك: {streak.current_streak}"
+                            ),
+                        )
+                        await message.answer_guest_query(fallback)
+                elif event == "broken_notice":
+                    logger.warning(
+                        "STREAK_GUEST_BROKEN_RICH_REJECTED connection=%s chat=%s error=%s",
+                        request.business_connection_id,
+                        request.chat_id,
+                        error,
+                    )
+                    fallback = InlineQueryResultArticle(
+                        id=f"streak-broken-notice-text-{token}",
+                        title="انقطع الستريك",
+                        input_message_content=InputTextMessageContent(
+                            message_text=BROKEN_NOTICE_TEXT,
+                        ),
+                    )
+                    await message.answer_guest_query(fallback)
+                elif event == "status" and streak is not None:
+                    logger.warning(
+                        "STREAK_GUEST_RICH_REJECTED connection=%s chat=%s error=%s",
+                        request.business_connection_id,
+                        request.chat_id,
+                        error,
+                    )
+                    fallback = InlineQueryResultArticle(
+                        id=f"streak-text-{token}",
+                        title="حالة الستريك",
+                        reply_markup=navigation(owner_user_id, request.chat_id) if owner_user_id else None,
+                        input_message_content=InputTextMessageContent(
+                            message_text=build_streak_fallback_text(
+                                current=streak.current_streak,
+                                longest=streak.longest_streak,
+                                completed_days=streak.completed_days,
+                                break_count=streak.break_count,
+                                freeze_count=streak.freeze_count,
+                                last_completed_day=streak.last_completed_day,
+                                streak_mode=streak.streak_mode,
+                                timezone_name=timezone_name,
+                                adventure_profile=profile,
+                                **participation,
+                            ),
+                        ),
+                    )
+                    await message.answer_guest_query(fallback)
+                else:
+                    raise
+        finally:
+            await repository.finish_guest_streak_request(token)
+            if request.summon_message_id is not None:
+                try:
+                    await _cleanup_summon(message, request)
+                except (TelegramBadRequest, TelegramForbiddenError) as error:
+                    logger.info(
+                        "STREAK_GUEST_SUMMON_DELETE_SKIPPED event=%s connection=%s chat=%s error=%s",
+                        event,
+                        request.business_connection_id,
+                        request.chat_id,
+                        error,
+                    )
+                else:
+                    logger.info(
+                        "STREAK_GUEST_SENT event=%s connection=%s chat=%s",
+                        event,
+                        request.business_connection_id,
+                        request.chat_id,
+                    )
 
         if event == "broken_notice":
             sticker_invoked = await guests.summon(

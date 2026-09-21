@@ -1,8 +1,11 @@
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from PIL import Image
 
-from app.services.sticker_pack import sticker_set_name
+from app.services.sticker_pack import StickerPack, sticker_set_name
 from app.stickers.pack_builder import ReadyPackBuilder
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,3 +66,25 @@ def test_ready_stickers_have_visible_artwork():
         with Image.open(path) as image:
             box = image.convert("RGBA").getbbox()
         assert box is not None, f"{path.name} has no visible artwork"
+
+
+def test_refresh_numbered_file_id_reads_only_target_pack(tmp_path):
+    stickers = [
+        SimpleNamespace(file_id=f"file-{index}")
+        for index in range(1, 121)
+    ]
+    bot = SimpleNamespace(
+        get_me=AsyncMock(return_value=SimpleNamespace(username="HStreakBot")),
+        get_sticker_set=AsyncMock(
+            return_value=SimpleNamespace(stickers=stickers)
+        ),
+    )
+    pack = StickerPack(bot, tmp_path / "ready", owner_id=1)
+
+    file_id = asyncio.run(pack.refresh_numbered_file_id(121))
+
+    assert file_id == "file-1"
+    bot.get_sticker_set.assert_awaited_once_with(
+        sticker_set_name("HStreakBot", 2)
+    )
+    assert pack.cached_file_id("121") == "file-1"

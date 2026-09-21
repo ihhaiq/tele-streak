@@ -1,10 +1,14 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import SendMessage
-from aiogram.types import InputRichMessageContent, InputTextMessageContent
+from aiogram.types import (
+    InlineQueryResultCachedSticker,
+    InputRichMessageContent,
+    InputTextMessageContent,
+)
 
 from app.adventures.rules import Profile
 from app.database.repository import GuestStreakRequest
@@ -80,6 +84,89 @@ async def test_rich_rejection_sends_exactly_one_fallback(event, monkeypatch):
     else:
         guests.summon.assert_awaited_once()
     repo.finish_guest_streak_request.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_success_rejection_refreshes_sticker_and_cleans_summon():
+    repo, message, adventures, guests, revive = context("success")
+    repo.get_guest_streak_request.return_value = GuestStreakRequest(
+        "AbCd_123", "bc", 20, 77
+    )
+    repo.get_sticker_file_id = AsyncMock(return_value="stale-file-id")
+    repo.set_sticker_file_id = AsyncMock()
+    repo.delete_sticker_file_id = AsyncMock()
+    message.bot.delete_business_messages = AsyncMock()
+    message.answer_guest_query.side_effect = [
+        TelegramBadRequest(
+            method=SendMessage(chat_id=20, text="test"),
+            message="wrong file identifier",
+        ),
+        None,
+    ]
+    pack = SimpleNamespace(
+        cached_file_id=Mock(return_value=None),
+        invalidate_cached_file_id=Mock(),
+        refresh_numbered_file_id=AsyncMock(return_value="fresh-file-id"),
+    )
+    stickers = SimpleNamespace(pack=pack)
+
+    handler = build_router(
+        repo, stickers, revive, guests, adventures
+    ).guest_message.handlers[0].callback
+    await handler(message)
+
+    calls = message.answer_guest_query.await_args_list
+    assert len(calls) == 2
+    assert isinstance(calls[0].args[0], InlineQueryResultCachedSticker)
+    assert calls[0].args[0].sticker_file_id == "stale-file-id"
+    assert isinstance(calls[1].args[0], InlineQueryResultCachedSticker)
+    assert calls[1].args[0].sticker_file_id == "fresh-file-id"
+    repo.delete_sticker_file_id.assert_awaited_once_with("streak:1")
+    pack.invalidate_cached_file_id.assert_called_once_with("1")
+    repo.set_sticker_file_id.assert_awaited_once_with(
+        "streak:1", "fresh-file-id"
+    )
+    repo.finish_guest_streak_request.assert_awaited_once_with("AbCd_123")
+    message.bot.delete_business_messages.assert_awaited_once_with(
+        business_connection_id="bc",
+        message_ids=[77],
+    )
+
+
+@pytest.mark.asyncio
+async def test_success_rejection_falls_back_to_text_when_refresh_fails():
+    repo, message, adventures, guests, revive = context("success")
+    repo.get_sticker_file_id = AsyncMock(return_value="stale-file-id")
+    repo.set_sticker_file_id = AsyncMock()
+    repo.delete_sticker_file_id = AsyncMock()
+    message.answer_guest_query.side_effect = [
+        TelegramBadRequest(
+            method=SendMessage(chat_id=20, text="test"),
+            message="wrong file identifier",
+        ),
+        None,
+    ]
+    pack = SimpleNamespace(
+        cached_file_id=Mock(return_value=None),
+        invalidate_cached_file_id=Mock(),
+        refresh_numbered_file_id=AsyncMock(return_value=None),
+    )
+    stickers = SimpleNamespace(pack=pack)
+
+    handler = build_router(
+        repo, stickers, revive, guests, adventures
+    ).guest_message.handlers[0].callback
+    await handler(message)
+
+    calls = message.answer_guest_query.await_args_list
+    assert len(calls) == 2
+    assert isinstance(calls[0].args[0], InlineQueryResultCachedSticker)
+    fallback = calls[1].args[0]
+    assert isinstance(fallback.input_message_content, InputTextMessageContent)
+    assert fallback.input_message_content.message_text == "🔥 الستريك: 1"
+    assert fallback.reply_markup is not None
+    repo.delete_sticker_file_id.assert_awaited_once_with("streak:1")
+    repo.finish_guest_streak_request.assert_awaited_once_with("AbCd_123")
 
 
 @pytest.mark.asyncio

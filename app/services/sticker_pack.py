@@ -182,6 +182,28 @@ class StickerPack:
     def cached_file_id(self, key: str) -> str | None:
         return self._file_ids.get(key)
 
+    def invalidate_cached_file_id(self, key: str) -> None:
+        self._file_ids.pop(key, None)
+
+    async def refresh_numbered_file_id(self, days: int) -> str | None:
+        if not 1 <= days <= 250:
+            return None
+        me = await self.bot.get_me()
+        if not me.username:
+            raise RuntimeError("bot must have a username")
+        offset = days - 1
+        part = offset // PACK_SIZE + 1
+        index = offset % PACK_SIZE
+        sticker_set = await self._retry(
+            self.bot.get_sticker_set,
+            sticker_set_name(me.username, part),
+        )
+        if index >= len(sticker_set.stickers):
+            return None
+        file_id = sticker_set.stickers[index].file_id
+        self._file_ids[str(days)] = file_id
+        return file_id
+
     def start_sync(self, connection_id: str) -> None:
         if self._sync_task is not None and not self._sync_task.done():
             return
