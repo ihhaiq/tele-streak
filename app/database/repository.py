@@ -1073,7 +1073,7 @@ class Repository:
 
     async def set_task_notifications(
         self,
-        owner_user_id: int,
+        connection_id: str,
         chat_id: int,
         enabled: bool,
     ) -> bool | None:
@@ -1082,13 +1082,9 @@ class Repository:
                 """
                 UPDATE streaks
                 SET task_notifications_enabled=?, updated_at=?
-                WHERE chat_id=? AND business_connection_id IN (
-                    SELECT business_connection_id
-                    FROM business_connections
-                    WHERE owner_user_id=? AND is_enabled=1
-                )
+                WHERE business_connection_id=? AND chat_id=?
                 """,
-                (int(enabled), self._now(), chat_id, owner_user_id),
+                (int(enabled), self._now(), connection_id, chat_id),
             )
             if cursor.rowcount != 1:
                 await db.rollback()
