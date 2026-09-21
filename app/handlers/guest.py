@@ -34,6 +34,7 @@ from app.services.streak_messages import (
     BROKEN_NOTICE_TEXT,
     build_broken_notice_rich_message,
 )
+from app.services.user_labels import user_label
 
 logger = logging.getLogger(__name__)
 TOKEN_RE = re.compile(
@@ -51,13 +52,13 @@ def extract_streak_guest_request(text: str | None) -> tuple[str, str] | None:
     return match.group(1), match.group(2)
 
 
-def _revive_text(state: ReviveApprovalState) -> str:
+def _revive_text(state: ReviveApprovalState, owner_name: str = "الطرف الأول", peer_name: str = "الطرف الثاني") -> str:
     owner = "✅" if state.owner_approved else "⏳"
     peer = "✅" if state.peer_approved else "⏳"
     return (
         "🧊 طلب إحياء الستريك\n\n"
-        f"الطرف الأول: {owner}\n"
-        f"الطرف الثاني: {peer}\n\n"
+        f"{owner_name}: {owner}\n"
+        f"{peer_name}: {peer}\n\n"
         "لا يتم إحياء الستريك إلا بعد موافقة الطرفين."
     )
 
@@ -210,6 +211,8 @@ def build_router(
                     id=f"celebration-{token}", sticker_file_id=file_id,
                     reply_markup=navigation(owner_user_id, request.chat_id))
             else:
+                owner_name = await user_label(message.bot, state.owner_user_id, "الطرف الأول")
+                peer_name = await user_label(message.bot, state.peer_user_id, "الطرف الثاني")
                 result = InlineQueryResultArticle(
                     id=f"adventure-{token}", title="مغامرتكم اليوم 🎉",
                     input_message_content=InputTextMessageContent(
@@ -372,7 +375,7 @@ def build_router(
                     id=f"streak-revive-{token}",
                     title="طلب إحياء الستريك",
                     input_message_content=InputTextMessageContent(
-                        message_text=_revive_text(state)
+                        message_text=_revive_text(state, owner_name, peer_name)
                     ),
                     reply_markup=_revive_keyboard(state.token),
                 )

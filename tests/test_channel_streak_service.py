@@ -8,9 +8,9 @@ from app.services.channel_streak_service import ChannelStreakService
 from app.services.channel_permissions import channel_status_text
 
 
-def message(day_id=1, author="حسين", bot=False):
+def message(day_id=1, author="حسين", bot=False, user_id=7):
     return SimpleNamespace(chat=SimpleNamespace(id=77, type="channel"), sender_chat=None,
-        from_user=SimpleNamespace(is_bot=bot, full_name=author), author_signature=author,
+        from_user=SimpleNamespace(id=user_id, is_bot=bot, full_name=author), author_signature=author,
         message_id=day_id)
 
 
@@ -36,6 +36,16 @@ async def test_channel_bot_post_is_ignored(tmp_path):
     await db.init(); repo = ChannelStreakRepository(db)
     service = ChannelStreakService(repo, "UTC"); await repo.activate(77)
     result, completed = await service.register_post(message(bot=True))
+    assert result is None and not completed
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_channel_bot_identity_is_ignored(tmp_path):
+    db = Database(tmp_path / "db.sqlite")
+    await db.init(); repo = ChannelStreakRepository(db)
+    service = ChannelStreakService(repo, "UTC", bot_user_id=7); await repo.activate(77)
+    result, completed = await service.register_post(message(user_id=7))
     assert result is None and not completed
     await db.close()
 

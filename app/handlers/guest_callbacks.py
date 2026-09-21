@@ -9,15 +9,16 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.database.revive_request_repository import ReviveApprovalState, ReviveRequestRepository
 from app.database.repository import Repository
 from app.services.rich_status import protection_text
+from app.services.user_labels import user_label
 
 
-def _approval_text(state: ReviveApprovalState) -> str:
+def _approval_text(state: ReviveApprovalState, owner_name: str = "الطرف الأول", peer_name: str = "الطرف الثاني") -> str:
     owner = "✅" if state.owner_approved else "⏳"
     peer = "✅" if state.peer_approved else "⏳"
     return (
         "🧊 طلب إحياء الستريك\n\n"
-        f"الطرف الأول: {owner}\n"
-        f"الطرف الثاني: {peer}\n\n"
+        f"{owner_name}: {owner}\n"
+        f"{peer_name}: {peer}\n\n"
         "لا يتم إحياء الستريك إلا بعد موافقة الطرفين."
     )
 
@@ -153,17 +154,19 @@ def build_router(
             return
 
         if not approval.ready:
+            owner_name = await user_label(bot, state.owner_user_id, "الطرف الأول")
+            peer_name = await user_label(bot, state.peer_user_id, "الطرف الثاني")
             if callback.inline_message_id:
                 with suppress(TelegramBadRequest):
                     await bot.edit_message_text(
                         inline_message_id=callback.inline_message_id,
-                        text=_approval_text(state),
+                        text=_approval_text(state, owner_name, peer_name),
                         reply_markup=_approval_keyboard(token),
                     )
             await callback.answer(
-                "تم تسجيل موافقتك. بانتظار موافقة الطرف الثاني."
+                f"تم تسجيل موافقتك. بانتظار موافقة {peer_name}."
                 if approval.status == "approved"
-                else "موافقتك مسجلة مسبقًا. بانتظار الطرف الثاني.",
+                else f"موافقتك مسجلة مسبقًا. بانتظار {peer_name}.",
                 show_alert=True,
             )
             return
