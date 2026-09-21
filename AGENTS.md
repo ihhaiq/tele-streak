@@ -12,6 +12,7 @@
 - `app/adventures/`: المهام، القواعد، وصفحات المغامرة.
 - `app/adventures/achievements.py`: تعريف الإنجازات وقواعد فتحها.
 - `app/services/adventure_service.py`: تنسيق التدفق فقط؛ الرندر في `app/story/renderer.py`.
+- `app/services/channel_streak_service.py` و`app/database/channel_repository.py`: منطق القنوات مستقل عن ستريك المحادثات الخاصة.
 - `app/database/`: الجداول والمستودعات والترقيات التلقائية.
 - `app/handlers/`: استقبال أوامر Telegram والـ callbacks، بدون منطق قاعدة بيانات طويل.
 - `tests/`: اختبارات القواعد والمستودعات وتدفق الستوري.
