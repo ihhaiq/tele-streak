@@ -46,13 +46,25 @@ def build_router(
     @router.callback_query(F.data.startswith("story_publish:"))
     async def publish_story(callback: CallbackQuery, bot: Bot) -> None:
         if adventures is None:
-            await callback.answer(
-                "نشر الستوري غير متاح حاليًا.",
-                show_alert=True,
-            )
+            with suppress(TelegramBadRequest):
+                await callback.answer(
+                    "نشر الستوري غير متاح حاليًا.",
+                    show_alert=True,
+                )
             return
 
         token = (callback.data or "").split(":", 1)[-1]
+        access = await adventures.story_publish_access(token, callback.from_user.id)
+        if access != "ready":
+            message = (
+                "نشر الستوري متاح فقط لصاحب حساب الـBusiness."
+                if access == "owner_only"
+                else "انتهت صلاحية المعاينة. سوي معاينة جديدة."
+            )
+            with suppress(TelegramBadRequest):
+                await callback.answer(message, show_alert=True)
+            return
+
         with suppress(TelegramBadRequest):
             await callback.answer("جاري نشر الستوري 🚀")
         result = await adventures.publish_story(token, callback.from_user.id)
