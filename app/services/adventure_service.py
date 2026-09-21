@@ -115,7 +115,6 @@ class AdventureService:
                         business_connection_id=connection_id,
                         text=state["latest_notice"] + "\n\n" + progress_text(profile),
                         reply_markup=navigation(owner, chat_id),
-                        disable_notification=True,
                     )
             except Exception:
                 logger.exception("STREAK_ADVENTURE_DELIVERY_FAILED")
