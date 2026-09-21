@@ -171,6 +171,8 @@ PRAGMAS = (
 
 
 MIGRATIONS = (
+    "ALTER TABLE story_publish_requests ADD COLUMN music_file_id TEXT",
+    "ALTER TABLE story_publish_requests ADD COLUMN music_uploader_id INTEGER",
     "ALTER TABLE business_connections ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Baghdad'",
     "ALTER TABLE streaks ADD COLUMN streak_mode TEXT NOT NULL DEFAULT 'message'",
     "ALTER TABLE streaks ADD COLUMN completed_days INTEGER NOT NULL DEFAULT 0",

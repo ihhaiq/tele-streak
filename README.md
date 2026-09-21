@@ -182,6 +182,10 @@ the bot regenerates the preview with that uploaded audio. Telegram `file_id` is
 used for the current preview, so the bot does not search or download music from
 external services.
 
+The preview also supports changing or deleting the uploaded audio. Audio
+metadata is stored with the publish request, while temporary rendered files
+are removed when a request expires, is replaced, or is published.
+
 See [the implementation and operations guide](docs/ADVENTURES.md) for the data
 model, reward rules, migration behavior, testing, and deployment checks.
 

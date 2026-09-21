@@ -236,6 +236,7 @@ class AdventureService:
         error = await self.prepare_story_preview(
             peer, request.owner_user_id, request.kind,
             music_file_id=file_id,
+            music_uploader_id=message.from_user.id,
             reply_to_message_id=message.message_id,
         )
         if error:
@@ -245,6 +246,19 @@ class AdventureService:
                 text=error,
             )
         return True
+
+    async def delete_story_music(self, token: str, user_id: int) -> str | None:
+        request = await self.data.get_story_publish_request(token)
+        if request is None:
+            return "انتهت صلاحية المعاينة."
+        peer = await self.repository.get_owner_streak(request.owner_user_id, request.chat_id)
+        if peer is None or user_id not in {request.owner_user_id, peer.peer_user_id or peer.chat_id}:
+            return "فقط طرفا الستريك يگدرون يغيرون الأغنية."
+        error = await self.prepare_story_preview(
+            peer, request.owner_user_id, request.kind,
+            music_file_id=None,
+        )
+        return error
 
     @staticmethod
     def _unlink_paths(paths) -> None:
@@ -282,6 +296,7 @@ class AdventureService:
         *,
         reply_to_message_id: int | None = None,
         music_file_id: str | None = None,
+        music_uploader_id: int | None = None,
     ) -> str | None:
         if kind not in {"image", "video5", "video10"}:
             return "نوع الستوري غير مدعوم."
@@ -347,9 +362,24 @@ class AdventureService:
                 thumbnail_path=str(thumb_target),
                 days=record.current_streak,
                 ttl_seconds=self.share_ttl_seconds,
+                music_file_id=music_file_id,
+                music_uploader_id=music_uploader_id,
             )
             await asyncio.to_thread(self._unlink_paths, old_paths)
 
+            music_buttons = [
+                InlineKeyboardButton(
+                    text="🎵 تغيير الأغنية" if request.music_file_id else "🎵 أضف أغنية",
+                    callback_data=f"story_music:{request.token}",
+                )
+            ]
+            if request.music_file_id:
+                music_buttons.append(
+                    InlineKeyboardButton(
+                        text="🗑 حذف الأغنية",
+                        callback_data=f"story_music_delete:{request.token}",
+                    )
+                )
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
@@ -357,11 +387,8 @@ class AdventureService:
                             text="🚀 نشر الستوري",
                             callback_data=f"story_publish:{request.token}",
                         ),
-                        InlineKeyboardButton(
-                            text="🎵 أضف أغنية",
-                            callback_data=f"story_music:{request.token}",
-                        ),
-                    ]
+                    ],
+                    music_buttons,
                 ]
             )
             caption = (
