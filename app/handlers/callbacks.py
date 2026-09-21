@@ -74,8 +74,15 @@ def build_router(
             await callback.answer("هذا الطلب ليس لك.", show_alert=True)
             return
 
+        connection_id = (
+            await repository.resolve_active_connection_id(
+                request.business_connection_id
+            )
+            or request.business_connection_id
+        )
+
         if await activations.is_active(
-            request.business_connection_id,
+            connection_id,
             request.chat_id,
         ):
             await activations.finish_request(token)
@@ -86,7 +93,7 @@ def build_router(
             return
 
         await streaks.start_from_peer_request(
-            connection_id=request.business_connection_id,
+            connection_id=connection_id,
             chat_id=request.chat_id,
             peer_user_id=request.peer_user_id,
             source_message_id=request.source_message_id,
@@ -105,7 +112,7 @@ def build_router(
         with suppress(TelegramBadRequest):
             await bot.send_message(
                 chat_id=request.chat_id,
-                business_connection_id=request.business_connection_id,
+                business_connection_id=connection_id,
                 text=(
                     "🔥 تم قبول بدء الستريك. "
                     f"✅ أكمل اليوم: {peer_name}\n⏳ بانتظار: {owner_name}"
