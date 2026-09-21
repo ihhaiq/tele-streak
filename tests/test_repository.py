@@ -201,13 +201,13 @@ def test_timezone_and_chat_controls(tmp_path):
             choose_pose=lambda days, last: "pose",
         )
 
-        assert await repository.set_task_notifications(10, 20, False) is False
+        assert await repository.set_task_notifications("bc-1", 20, False) is False
         muted = await repository.get_owner_streak(10, 20)
         other = await repository.get_owner_streak(10, 21)
         assert muted is not None and muted.task_notifications_enabled is False
         assert other is not None and other.task_notifications_enabled is True
 
-        assert await repository.set_task_notifications(10, 20, True) is True
+        assert await repository.set_task_notifications("bc-1", 20, True) is True
         assert (await repository.get_owner_streak(10, 20)).task_notifications_enabled is True
 
         assert await repository.toggle_chat_setting(10, 20, "enabled") is False
