@@ -28,6 +28,18 @@ def build_router(
             return
         if text in {"ستريك", "/ستريك", "streak", "/streak"}:
             streak = await repository.get(message.chat.id)
+            if streak is not None and streak.is_enabled and streak.current_streak > 0:
+                try:
+                    await stickers.send_channel_success(
+                        chat_id=message.chat.id,
+                        days=streak.current_streak,
+                    )
+                except Exception:
+                    logger.exception(
+                        "CHANNEL_STREAK_STATUS_STICKER_FAILED chat=%s days=%s",
+                        message.chat.id,
+                        streak.current_streak,
+                    )
             await message.answer(channel_status_text(streak, streaks.timezone.key))
             return
         streak, completed = await streaks.register_post(message)
@@ -39,13 +51,9 @@ def build_router(
                 chat_id=message.chat.id,
                 days=streak.current_streak,
             )
-            if streak.current_streak == 1:
-                await stickers.send_channel_celebration(
-                    chat_id=message.chat.id,
-                )
         except Exception:
             logger.exception(
-                "CHANNEL_STREAK_CELEBRATION_FAILED chat=%s days=%s",
+                "CHANNEL_STREAK_STICKER_FAILED chat=%s days=%s",
                 message.chat.id,
                 streak.current_streak,
             )
