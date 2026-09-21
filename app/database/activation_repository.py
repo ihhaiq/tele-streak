@@ -157,13 +157,20 @@ class StreakActivationRepository:
         async with self.database.connect() as db:
             cursor = await db.execute(
                 """
-                SELECT r.token, r.business_connection_id, r.chat_id,
+                SELECT r.token,
+                       active.business_connection_id AS business_connection_id,
+                       r.chat_id,
                        r.peer_user_id, r.source_message_id,
-                       b.owner_user_id, b.user_chat_id
+                       source.owner_user_id, active.user_chat_id
                 FROM streak_start_requests AS r
-                JOIN business_connections AS b
-                  ON b.business_connection_id=r.business_connection_id
-                WHERE r.token=? AND r.expires_at>? AND b.is_enabled=1
+                JOIN business_connections AS source
+                  ON source.business_connection_id=r.business_connection_id
+                JOIN business_connections AS active
+                  ON active.owner_user_id=source.owner_user_id
+                 AND active.is_enabled=1
+                WHERE r.token=? AND r.expires_at>?
+                ORDER BY active.updated_at DESC
+                LIMIT 1
                 """,
                 (token, now),
             )
