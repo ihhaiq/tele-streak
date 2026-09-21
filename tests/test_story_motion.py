@@ -175,20 +175,34 @@ def test_blink_signal_is_periodic_and_bounded():
     assert max(values) > 0.9
 
 
-def test_face_tracks_balls_and_milestone_has_a_happier_finale():
+def test_face_tracks_balls_without_animating_the_mouth():
     samples = [motion_layout(i / FPS, days=8, duration=10) for i in range(300)]
-    assert max(s.jake.smile for s in samples) - min(s.jake.smile for s in samples) > 0.3
-    assert max(s.jake.mouth_open for s in samples) > 0.4
+    assert all(s.jake.mouth_open == 0 for s in samples)
     assert max(s.jake.gaze[0] for s in samples) > 0.1
     assert min(s.jake.gaze[0] for s in samples) < -0.1
     assert min(s.jake.gaze[1] for s in samples) < -0.3
     for sample in samples[:270]:
         # Direction follows the actual ball positions, including higher 10s throws.
         assert sample.jake.gaze[0] == sum(b.center[0] - 360 for b in sample.balls) / 310
-    assert (
-        motion_layout(4.9, days=100, duration=5).jake.mouth_open
-        > motion_layout(4.9, days=8, duration=5).jake.mouth_open
-    )
+
+
+def test_jump_uses_ballistic_gravity_and_landing_absorption():
+    takeoff = 0.85
+    samples = [
+        motion_layout(takeoff + dt, days=8, duration=5).jake
+        for dt in (0.02, 0.12, 0.24, 0.36, 0.46)
+    ]
+    heights = [pose.jump_height for pose in samples]
+    velocities = [pose.jump_velocity for pose in samples]
+
+    assert heights[0] > 0
+    assert heights[2] == max(heights)
+    assert heights[-1] < heights[2]
+    assert velocities[0] > velocities[1] > velocities[2] > velocities[3]
+    landed = motion_layout(takeoff + 0.50, days=8, duration=5).jake
+    assert landed.jump_height == 0
+    assert landed.landing_impact > 0
+    assert landed.squat > 0
 
 
 def test_grounded_anticipation_release_and_settle():
@@ -220,7 +234,8 @@ def test_ten_second_motion_is_bounded_and_continuous():
             assert p.center_y == 805 and p.height_scale == 1
             assert all(0 <= h <= 3 for h in p.heel_lift)
             assert 0 <= p.squat <= 1 and 0 <= p.stretch <= 1
-            assert abs(p.hip_sway) <= 3
+            assert 0 <= p.jump_height <= 31
+            assert abs(p.hip_sway) <= 4
             assert all(abs(v) <= 24 for offset in p.hand_offsets for v in offset)
         for a, b in zip(poses, poses[1:]):
             assert abs(a.sway - b.sway) < 4
@@ -270,14 +285,20 @@ def test_actual_asset_face_and_ground_contact_render():
     assert upper > lower * 2
     for field, value in [
         ("gaze", (0.8, -0.8)),
-        ("smile", 0.9),
-        ("mouth_open", 0.7),
         ("blink", 0.5),
     ]:
         face = rig._with_face(replace(idle, **{field: value}))
         assert (
             ImageChops.difference(face, rig._with_face(idle)).convert("RGB").getbbox()
             is not None
+        )
+
+    # تغيير قيم الفم/الابتسامة ما يغير أي بكسل؛ الفم يبقى من الرسم الأصلي.
+    for field, value in [("smile", 0.9), ("mouth_open", 0.7)]:
+        face = rig._with_face(replace(idle, **{field: value}))
+        assert (
+            ImageChops.difference(face, rig._with_face(idle)).convert("RGB").getbbox()
+            is None
         )
 
 
