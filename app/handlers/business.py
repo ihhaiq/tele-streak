@@ -64,6 +64,39 @@ def is_revive_streak_query(text: str | None) -> bool:
     }
 
 
+def parse_task_notifications_command(text: str | None) -> bool | None:
+    normalized = _normalize_text(text)
+    if normalized in {
+        "تعطيل الاشعارات",
+        "تعطيل الإشعارات",
+        "تعطيل اشعارات المهام",
+        "تعطيل إشعارات المهام",
+        "كتم الاشعارات",
+        "كتم الإشعارات",
+        "كتم اشعارات المهام",
+        "كتم إشعارات المهام",
+        "/mutetasks",
+        "/tasknotifyoff",
+        "mute task notifications",
+    }:
+        return False
+    if normalized in {
+        "تفعيل الاشعارات",
+        "تفعيل الإشعارات",
+        "تفعيل اشعارات المهام",
+        "تفعيل إشعارات المهام",
+        "تشغيل الاشعارات",
+        "تشغيل الإشعارات",
+        "تشغيل اشعارات المهام",
+        "تشغيل إشعارات المهام",
+        "/unmutetasks",
+        "/tasknotifyon",
+        "enable task notifications",
+    }:
+        return True
+    return None
+
+
 def parse_add_streak_days(text: str | None) -> int | None:
     normalized = _normalize_text(text)
     prefixes = ("اضف ستريك", "أضف ستريك", "add streak", "/addstreak")
@@ -254,6 +287,45 @@ def build_router(
                 owner_id,
                 add_days,
                 updated.current_streak,
+            )
+            return
+
+        task_notifications = parse_task_notifications_command(message.text)
+        if task_notifications is not None:
+            if not connection_id or message.from_user is None:
+                return
+            owner_id = await streaks.get_owner_id(message, connection_id)
+            if owner_id is None or message.from_user.id != owner_id:
+                return
+            updated = await repository.set_task_notifications(
+                owner_id,
+                message.chat.id,
+                task_notifications,
+            )
+            if updated is None:
+                await stickers.send_notice_text(
+                    connection_id=connection_id,
+                    chat_id=message.chat.id,
+                    text="🔥 ماكو ستريك محفوظ بهاي المحادثة حتى أغيّر إشعارات المهام.",
+                )
+                return
+            await stickers.send_notice_text(
+                connection_id=connection_id,
+                chat_id=message.chat.id,
+                text=(
+                    "🔔 فعلت إشعارات اكتمال المهام بهاي المحادثة."
+                    if updated
+                    else (
+                        "🔕 عطلت إشعارات اكتمال المهام بهاي المحادثة. "
+                        "المهام تبقى تتحدث بقائمة المهام."
+                    )
+                ),
+            )
+            logger.info(
+                "STREAK_TASK_NOTIFICATIONS connection=%s chat=%s enabled=%s",
+                connection_id,
+                message.chat.id,
+                updated,
             )
             return
 
