@@ -123,7 +123,7 @@ async def _refresh_numbered_sticker_id(
     await repository.delete_sticker_file_id(key)
     stickers.pack.invalidate_cached_file_id(str(days))
     try:
-        pack_id = await stickers.pack.file_id(connection_id, days)
+        pack_id = await stickers.pack.refresh_numbered_file_id(days)
     except Exception:
         logger.exception(
             "STREAK_GUEST_STICKER_REFRESH_FAILED connection=%s days=%s",
