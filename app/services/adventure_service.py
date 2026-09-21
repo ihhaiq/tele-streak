@@ -5,6 +5,7 @@ import json
 import logging
 import secrets
 import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -271,13 +272,32 @@ class AdventureService:
         if peer is None or message.from_user.id not in {request.owner_user_id, peer.peer_user_id or peer.chat_id}:
             return True
         file_id = message.audio.file_id if message.audio else message.voice.file_id
-        error = await self.prepare_story_preview(
-            peer, request.owner_user_id, request.kind,
-            music_file_id=file_id,
-            music_uploader_id=message.from_user.id,
-            reply_to_message_id=message.message_id,
-            replace_existing=True,
-        )
+        try:
+            error = await self.prepare_story_preview(
+                peer, request.owner_user_id, request.kind,
+                music_file_id=file_id,
+                music_uploader_id=message.from_user.id,
+                reply_to_message_id=message.message_id,
+                replace_existing=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.warning(
+                "STORY_MUSIC_RENDER_FAILED connection=%s chat=%s returncode=%s",
+                connection_id,
+                message.chat.id,
+                exc.returncode,
+            )
+            error = (
+                "تعذر تجهيز الستوري بالصوت بسبب ضغط موارد مؤقت. "
+                "جرب مرة ثانية أو استخدم ملف صوتي أقصر."
+            )
+        except Exception:
+            logger.exception(
+                "STORY_MUSIC_RENDER_FAILED connection=%s chat=%s",
+                connection_id,
+                message.chat.id,
+            )
+            error = "تعذر تجهيز الستوري بالصوت هالمرة. جرب مرة ثانية."
         if error:
             await self.bot.send_message(
                 chat_id=message.chat.id,
