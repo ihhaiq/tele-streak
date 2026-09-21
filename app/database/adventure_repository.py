@@ -269,7 +269,12 @@ class AdventureRepository:
                 WHERE business_connection_id=? AND chat_id=? AND story_claim_at <= ?""",
                 (timestamp, connection_id, chat_id, timestamp - 60),
             )
-            return result.rowcount == 1
+            claimed = result.rowcount == 1
+            if claimed:
+                await db.commit()
+            else:
+                await db.rollback()
+            return claimed
 
     async def release_story_claim(
         self, connection_id: str, chat_id: int, timestamp: float
@@ -381,12 +386,9 @@ class AdventureRepository:
             await db.execute("BEGIN IMMEDIATE")
             row = await (
                 await db.execute(
-                    """SELECT r.*, s.peer_user_id
-                    FROM story_publish_requests AS r
-                    LEFT JOIN streaks AS s
-                      ON s.business_connection_id=r.business_connection_id
-                     AND s.chat_id=r.chat_id
-                    WHERE r.token=?""",
+                    """SELECT *
+                    FROM story_publish_requests
+                    WHERE token=?""",
                     (token,),
                 )
             ).fetchone()
@@ -394,10 +396,9 @@ class AdventureRepository:
                 await db.rollback()
                 return "expired", None
             request = _story_request(row)
-            peer_id = int(row["peer_user_id"]) if row["peer_user_id"] is not None else request.chat_id
-            if user_id not in {request.owner_user_id, peer_id}:
+            if user_id != request.owner_user_id:
                 await db.rollback()
-                return "unauthorized", request
+                return "owner_only", request
             if request.status == "published":
                 await db.rollback()
                 return "published", request
