@@ -1,5 +1,21 @@
 # Streak Business Bot
 
+## Channel streaks
+
+القنوات لها ستريك مستقل عن محادثات Business الخاصة. بعد إرسال `بدأ ستريك` في
+القناة، يكفي منشور بشري واحد كل يوم؛ المنشورات الإضافية في اليوم نفسه لا تزيد
+العداد. يحفظ النظام الستريك الحالي والأطول والأيام المكتملة والانقطاعات وتوقيع
+ناشر آخر يوم في قاعدة البيانات.
+
+Telegram لا يرسل دائمًا الحساب الفعلي الذي نشر باسم القناة إلى Bot API، لذلك
+يُعرض `author_signature` عندما يكون متاحًا، وليس اسمًا شخصيًا مضمونًا. منشورات
+البوتات لا تُحتسب. نشر Stories من القنوات يخضع لما تسمحه واجهة Telegram؛ لا
+يُستخدم YouTube، والأغنية المقبولة هي الملف الذي يرفعه المستخدم.
+
+قبل أي معاينة أو نشر Story يجب إعادة فحص عضوية المستخدم؛ المسموح هو مالك
+القناة أو مشرف يملك صلاحية إدارة القصص. العضو العادي لا يُقبل حتى لو ضغط زرًا
+قديمًا من معاينة سابقة.
+
 Telegram Business bot that maintains an independent daily streak for each
 `business_connection_id + chat_id`. A day completes only after the Business
 account owner and the peer each send at least one human message during the same

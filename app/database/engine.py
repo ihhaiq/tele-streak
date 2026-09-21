@@ -23,6 +23,19 @@ CREATE TABLE IF NOT EXISTS business_connections (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS channel_streaks (
+    channel_id INTEGER PRIMARY KEY,
+    current_streak INTEGER NOT NULL DEFAULT 0,
+    longest_streak INTEGER NOT NULL DEFAULT 0,
+    completed_days INTEGER NOT NULL DEFAULT 0,
+    break_count INTEGER NOT NULL DEFAULT 0,
+    last_completed_day TEXT,
+    last_completed_by TEXT,
+    is_enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS streaks (
     business_connection_id TEXT NOT NULL,
     chat_id INTEGER NOT NULL,

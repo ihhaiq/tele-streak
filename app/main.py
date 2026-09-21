@@ -10,6 +10,7 @@ from aiogram.client.session.aiohttp import AiohttpSession
 
 from app.config import load_settings
 from app.database.activation_repository import StreakActivationRepository
+from app.database.channel_repository import ChannelStreakRepository
 from app.database.engine import Database
 from app.database.repository import Repository
 from app.database.revive_request_repository import ReviveRequestRepository
@@ -17,6 +18,7 @@ from app.handlers.adventures import build_router as adventures_router
 from app.handlers.business import build_router as business_router
 from app.handlers.callbacks import build_router as callbacks_router
 from app.handlers.connection import build_router as connection_router
+from app.handlers.channel import build_router as channel_router
 from app.handlers.errors import build_router as errors_router
 from app.handlers.guest import build_router as guest_router
 from app.handlers.guest_callbacks import build_router as guest_callbacks_router
@@ -28,6 +30,7 @@ from app.services.guest_delivery import GuestDeliveryService
 from app.services.scheduler import StreakScheduler
 from app.services.sticker_service import StickerService
 from app.services.streak_service import StreakService
+from app.services.channel_streak_service import ChannelStreakService
 from app.services.streak_test_service import StreakTestService
 from app.stickers.poses import PoseCatalog
 from app.stickers.renderer import StickerRenderer
@@ -43,6 +46,7 @@ async def main() -> None:
     await database.init()
 
     repository = Repository(database)
+    channel_repository = ChannelStreakRepository(database)
     activations = StreakActivationRepository(database)
     revive_requests = ReviveRequestRepository(database)
     session = AiohttpSession(timeout=60)
@@ -57,6 +61,7 @@ async def main() -> None:
     poses = PoseCatalog(settings.assets_dir)
     renderer = StickerRenderer(poses, settings.rendered_dir)
     streaks = StreakService(repository, activations, settings.timezone, poses)
+    channel_streaks = ChannelStreakService(channel_repository, settings.timezone)
     stickers = StickerService(
         bot,
         repository,
@@ -77,6 +82,7 @@ async def main() -> None:
     streak_tests = StreakTestService(repository)
     dp.include_router(errors_router())
     dp.include_router(connection_router(repository, streaks))
+    dp.include_router(channel_router(channel_repository, channel_streaks))
     dp.include_router(streak_test_router(repository, stickers, guests, streak_tests))
     dp.include_router(
         business_router(streaks, stickers, repository, activations, guests, adventures)
