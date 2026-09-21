@@ -283,17 +283,21 @@ def test_actual_asset_face_and_ground_contact_render():
     upper = sum(ImageStat.Stat(diff.crop((0, 40, base.width, 260))).mean)
     lower = sum(ImageStat.Stat(diff.crop((0, 380, base.width, base.height))).mean)
     assert upper > lower * 2
-    for field, value in [
-        ("gaze", (0.8, -0.8)),
-        ("blink", 0.5),
-    ]:
-        face = rig._with_face(replace(idle, **{field: value}))
-        assert (
-            ImageChops.difference(face, rig._with_face(idle)).convert("RGB").getbbox()
-            is not None
-        )
+    # الرمشة فقط مسموح تغير العين؛ شكل العين وداخلها يبقى من المرجع.
+    blink = rig._with_face(replace(idle, blink=0.5))
+    assert (
+        ImageChops.difference(blink, rig._with_face(idle)).convert("RGB").getbbox()
+        is not None
+    )
 
-    # تغيير قيم الفم/الابتسامة ما يغير أي بكسل؛ الفم يبقى من الرسم الأصلي.
+    # ما نضيف pupil متحرك: gaze لا يغير أي بكسل من العين الأصلية.
+    gaze = rig._with_face(replace(idle, gaze=(0.8, -0.8)))
+    assert (
+        ImageChops.difference(gaze, rig._with_face(idle)).convert("RGB").getbbox()
+        is None
+    )
+
+    # الفم والابتسامة يبقون من الرسم الأصلي أيضًا.
     for field, value in [("smile", 0.9), ("mouth_open", 0.7)]:
         face = rig._with_face(replace(idle, **{field: value}))
         assert (
