@@ -79,7 +79,8 @@ def build_router(
 
         messages = {
             "expired": "انتهت صلاحية المعاينة. سوي معاينة جديدة.",
-            "unauthorized": "فقط طرفا الستريك يگدرون ينشرون هاي الستوري.",
+            "owner_only": "نشر الستوري متاح فقط لصاحب حساب الـBusiness.",
+            "unauthorized": "ما عندك صلاحية لنشر هاي الستوري.",
             "publishing": "الستوري قيد النشر حاليًا.",
             "permission": (
                 "فعّل صلاحية إدارة الستوريات للبوت من إعدادات Telegram Business."
@@ -98,12 +99,14 @@ def build_router(
     @router.callback_query(F.data.startswith("story_music:"))
     async def add_story_music(callback: CallbackQuery, bot: Bot) -> None:
         if adventures is None:
-            await callback.answer("إضافة الأغنية غير متاحة حاليًا.", show_alert=True)
+            with suppress(TelegramBadRequest):
+                await callback.answer("إضافة الأغنية غير متاحة حاليًا.", show_alert=True)
             return
         token = (callback.data or "").split(":", 1)[-1]
         connection_id = await adventures.begin_music_upload(token, callback.from_user.id)
         if not connection_id:
-            await callback.answer("انتهت المعاينة أو ما عندك صلاحية.", show_alert=True)
+            with suppress(TelegramBadRequest):
+                await callback.answer("انتهت المعاينة أو ما عندك صلاحية.", show_alert=True)
             return
         with suppress(TelegramBadRequest):
             await callback.answer("أرسل ملف صوتي أو بصمة صوتية الآن 🎵", show_alert=True)
@@ -117,7 +120,8 @@ def build_router(
     @router.callback_query(F.data.startswith("story_music_delete:"))
     async def delete_story_music(callback: CallbackQuery, bot: Bot) -> None:
         if adventures is None:
-            await callback.answer("إدارة الأغنية غير متاحة حاليًا.", show_alert=True)
+            with suppress(TelegramBadRequest):
+                await callback.answer("إدارة الأغنية غير متاحة حاليًا.", show_alert=True)
             return
         token = (callback.data or "").split(":", 1)[-1]
         with suppress(TelegramBadRequest):
