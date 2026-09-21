@@ -162,7 +162,7 @@ def test_task_notification_command_changes_only_current_chat():
 
         await router.business_message.handlers[0].callback(message)
 
-        repo.set_task_notifications.assert_awaited_once_with(10, 20, False)
+        repo.set_task_notifications.assert_awaited_once_with("bc", 20, False)
         streaks.register_message.assert_not_awaited()
         sent = stickers.send_notice_text.await_args.kwargs
         assert sent["chat_id"] == 20
