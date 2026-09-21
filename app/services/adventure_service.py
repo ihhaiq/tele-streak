@@ -276,6 +276,7 @@ class AdventureService:
             music_file_id=file_id,
             music_uploader_id=message.from_user.id,
             reply_to_message_id=message.message_id,
+            replace_existing=True,
         )
         if error:
             await self.bot.send_message(
@@ -295,6 +296,7 @@ class AdventureService:
         error = await self.prepare_story_preview(
             peer, request.owner_user_id, request.kind,
             music_file_id=None,
+            replace_existing=True,
         )
         return error
 
@@ -335,6 +337,7 @@ class AdventureService:
         reply_to_message_id: int | None = None,
         music_file_id: str | None = None,
         music_uploader_id: int | None = None,
+        replace_existing: bool = False,
     ) -> str | None:
         if kind not in {"image", "video5", "video10"}:
             return "نوع الستوري غير مدعوم."
@@ -347,12 +350,15 @@ class AdventureService:
 
         async with self._story_slots:
             claim_timestamp = datetime.now(timezone.utc).timestamp()
-            if not await self.data.claim_story(
-                record.business_connection_id,
-                record.chat_id,
-                claim_timestamp,
-            ):
-                return "انتظر دقيقة بين كل ستوري والثاني 🎬"
+            claimed = False
+            if not replace_existing:
+                claimed = await self.data.claim_story(
+                    record.business_connection_id,
+                    record.chat_id,
+                    claim_timestamp,
+                )
+                if not claimed:
+                    return "انتظر دقيقة بين كل ستوري والثاني 🎬"
 
             await asyncio.to_thread(
                 self._cleanup_shared_files,
@@ -366,18 +372,20 @@ class AdventureService:
                         record, owner, kind, folder, music_file_id
                     )
                 except RuntimeError as error:
-                    await self.data.release_story_claim(
-                        record.business_connection_id,
-                        record.chat_id,
-                        claim_timestamp,
-                    )
+                    if claimed:
+                        await self.data.release_story_claim(
+                            record.business_connection_id,
+                            record.chat_id,
+                            claim_timestamp,
+                        )
                     raise
                 except Exception:
-                    await self.data.release_story_claim(
-                        record.business_connection_id,
-                        record.chat_id,
-                        claim_timestamp,
-                    )
+                    if claimed:
+                        await self.data.release_story_claim(
+                            record.business_connection_id,
+                            record.chat_id,
+                            claim_timestamp,
+                        )
                     raise
                 asset_id = secrets.token_hex(10)
                 media_suffix = ".jpg" if kind == "image" else ".mp4"
