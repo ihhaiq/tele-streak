@@ -5,6 +5,7 @@ import random
 import shutil
 import subprocess
 import unicodedata
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -44,6 +45,170 @@ def centered(draw, text, y, size, fill, width=640):
         fill=fill,
         direction="rtl" if any("\u0600" <= c <= "\u06ff" for c in text) else "ltr",
     )
+
+
+
+@dataclass(frozen=True, slots=True)
+class _BallMotion:
+    center: tuple[float, float]
+    scale_x: float
+    scale_y: float
+    airborne: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _MotionLayout:
+    jake_width_scale: float
+    jake_height_scale: float
+    jake_y: float
+    chain_amplitude: float
+    balls: tuple[_BallMotion, _BallMotion]
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _damped_spring(dt: float, *, frequency: float = 2.5, damping: float = 4.2) -> float:
+    if dt < 0:
+        return 0.0
+    return math.exp(-damping * dt) * math.sin(2 * math.pi * frequency * dt)
+
+
+def _ball_motion(t: float, index: int) -> _BallMotion:
+    """رمي بين اليدين بسرعة أفقية ثابتة وقوس رأسي تحكمه الجاذبية."""
+    if index not in (0, 1):
+        raise ValueError("ball index must be 0 or 1")
+
+    hands = ((205.0, 655.0), (515.0, 655.0))
+    warmup = 0.35
+    stagger = 0.90
+    flight = 1.35
+    hold = 0.45
+    period = flight + hold
+    shifted = t - warmup - index * stagger
+
+    if shifted < 0:
+        return _BallMotion(hands[index], 1.0, 1.0, False)
+
+    cycle = int(shifted // period)
+    local = shifted - cycle * period
+    start_hand = (index + cycle) % 2
+    end_hand = 1 - start_hand
+    start_x, start_y = hands[start_hand]
+    end_x, end_y = hands[end_hand]
+
+    if local < flight:
+        # المعادلة تجعل نقطة البداية والنهاية على نفس الارتفاع،
+        # والقمة بارتفاع 190px بالمنتصف.
+        rise = 190.0
+        gravity = 8.0 * rise / (flight * flight)
+        velocity_y = -0.5 * gravity * flight
+        progress = local / flight
+        x = start_x + (end_x - start_x) * progress
+        y = start_y + velocity_y * local + 0.5 * gravity * local * local
+
+        # تمدد طفيف مع السرعة العمودية فقط، بدون قوس/تكبير مصطنع.
+        vertical_speed = abs(velocity_y + gravity * local) / abs(velocity_y)
+        stretch = 0.018 * vertical_speed
+        return _BallMotion(
+            (x, y),
+            1.0 - stretch * 0.55,
+            1.0 + stretch,
+            True,
+        )
+
+    caught = local - flight
+    # الالتقاط يمتص الحركة خلال أجزاء من الثانية ثم ترجع الكرة لطبيعتها.
+    impact = math.exp(-10.0 * caught)
+    bounce = 4.0 * _damped_spring(caught, frequency=3.4, damping=8.0)
+    return _BallMotion(
+        (end_x, end_y + bounce),
+        1.0 + 0.025 * impact,
+        1.0 - 0.035 * impact,
+        False,
+    )
+
+
+def _jake_reaction(t: float) -> float:
+    """رد فعل نابضي على الرميات والالتقاطات المتعاقبة."""
+    reaction = 0.0
+    # هناك حدث رمي كل 0.9 ثانية، وبعده التقاط بعد 1.35 ثانية.
+    first_launch = 0.35
+    step = 0.90
+    flight = 1.35
+    event = first_launch
+    while event <= t + 0.001:
+        reaction += 0.75 * _damped_spring(t - event, frequency=2.1, damping=4.8)
+        reaction -= 0.55 * _damped_spring(
+            t - (event + flight),
+            frequency=2.8,
+            damping=6.0,
+        )
+        event += step
+    return max(-1.2, min(1.2, reaction))
+
+
+def _motion_layout(t: float) -> _MotionLayout:
+    t = max(0.0, float(t))
+    reaction = _jake_reaction(t)
+    chain_wave = math.sin(2 * math.pi * t / 2.35)
+
+    # squash/stretch محافظ على الحجم تقريبًا ويستجيب للرمي والالتقاط.
+    height_scale = max(0.94, min(1.065, 1.0 + 0.040 * reaction))
+    width_scale = max(0.95, min(1.055, 1.0 - 0.026 * reaction))
+    jake_y = 805.0 - 6.0 * reaction + 2.0 * chain_wave
+    chain_amplitude = 7.0 + 2.0 * abs(reaction)
+
+    return _MotionLayout(
+        jake_width_scale=width_scale,
+        jake_height_scale=height_scale,
+        jake_y=jake_y,
+        chain_amplitude=chain_amplitude,
+        balls=(_ball_motion(t, 0), _ball_motion(t, 1)),
+    )
+
+
+def _elastic_jake(
+    source: Image.Image,
+    t: float,
+    *,
+    width_scale: float,
+    height_scale: float,
+    chain_amplitude: float,
+) -> Image.Image:
+    """تشويه rubber-hose بسيط: أجزاء الجسم تتبع بعضها بتأخير بدل دوران الجسم كله."""
+    width = max(1, round(source.width * width_scale))
+    height = max(1, round(source.height * height_scale))
+    actor = source.resize((width, height), Image.Resampling.LANCZOS)
+
+    padding = max(4, math.ceil(chain_amplitude) + 4)
+    result = Image.new("RGBA", (width + 2 * padding, height), (0, 0, 0, 0))
+    bands = 18
+
+    for band in range(bands):
+        top = round(height * band / bands)
+        bottom = round(height * (band + 1) / bands)
+        if bottom <= top:
+            continue
+
+        center = (top + bottom) / (2 * height)
+        # القدمين شبه ثابتة، وكل جزء أعلى يتأخر أكثر عن الجزء اللي تحته.
+        follow = (1.0 - center) ** 0.72
+        phase_delay = (1.0 - center) * 0.82
+        offset = round(
+            chain_amplitude
+            * follow
+            * math.sin(2 * math.pi * t / 2.05 - phase_delay)
+        )
+
+        crop_top = max(0, top - 1)
+        crop_bottom = min(height, bottom + 1)
+        strip = actor.crop((0, crop_top, width, crop_bottom))
+        result.alpha_composite(strip, (padding + offset, crop_top))
+
+    return result
+
 
 
 def celebration_art(size=512) -> Image.Image:
@@ -228,49 +393,76 @@ class StoryRenderer:
         rng = random.Random(84)
         confetti = [
             (
-                rng.randrange(WIDTH),
-                rng.randrange(HEIGHT),
+                rng.randrange(30, WIDTH - 30),
+                rng.randrange(360, 1060),
                 rng.choice(palette),
-                rng.uniform(30, 75),
+                rng.uniform(12, 28),
             )
-            for _ in range(48)
+            for _ in range(30)
         ]
         for frame in range(duration * FPS):
             t = frame / FPS
+            layout = _motion_layout(t)
             image = background.copy().convert("RGBA")
             draw = ImageDraw.Draw(image)
+
+            # قصاصات قليلة وبطيئة؛ تبقى خلف الشخصيات بدل ما تصير ضوضاء مستمرة.
             for x, y, color, speed in confetti:
-                yy = (y + t * speed) % HEIGHT
-                if 370 < yy < 1070:
+                yy = 360 + ((y - 360 + t * speed) % 700)
+                if not (520 < yy < 1010 and 125 < x < 595):
                     draw.rounded_rectangle(
-                        (x, yy, x + 5, yy + 11), radius=2, fill=color
+                        (x, yy, x + 4, yy + 8), radius=2, fill=color
                     )
-            beat = math.sin(2 * math.pi * t)
-            draw.ellipse((225, 982, 495, 1014), fill="#14192f")
-            actor = jake.resize(
-                (420 + int(8 * beat), 420 - int(12 * beat)), Image.Resampling.BICUBIC
+
+            actor = _elastic_jake(
+                jake,
+                t,
+                width_scale=layout.jake_width_scale,
+                height_scale=layout.jake_height_scale,
+                chain_amplitude=layout.chain_amplitude,
             )
-            actor = actor.rotate(
-                5 * math.sin(math.pi * t), Image.Resampling.BICUBIC, expand=True
+            shadow_width = round(228 * layout.jake_width_scale)
+            shadow_y = round(layout.jake_y + actor.height * 0.47)
+            draw.ellipse(
+                (
+                    360 - shadow_width // 2,
+                    shadow_y - 10,
+                    360 + shadow_width // 2,
+                    shadow_y + 10,
+                ),
+                fill=(12, 16, 34, 150),
             )
             image.alpha_composite(
                 actor,
-                (360 - actor.width // 2, 795 - actor.height // 2 - int(15 * abs(beat))),
+                (
+                    360 - actor.width // 2,
+                    round(layout.jake_y - actor.height / 2),
+                ),
             )
-            for i, ball in enumerate(balls):
-                phase = (t / 2 + i * 0.5) % 1
-                # رمية لكل يد، بمسار ناعم يرجع لنفس موضعه.
-                x = 190 + 340 * i + 35 * math.sin(2 * math.pi * phase)
-                y = 685 - 210 * (0.5 - 0.5 * math.cos(2 * math.pi * phase))
-                tilt = ball.rotate(
-                    9 * math.sin(2 * math.pi * phase),
-                    Image.Resampling.BICUBIC,
-                    expand=True,
+
+            # رمي حقيقي: المحور الرأسي بالجاذبية، والكرة تستقر لحظة باليد قبل الرمية التالية.
+            for index, ball in enumerate(balls):
+                motion = layout.balls[index]
+                ball_width = max(1, round(192 * motion.scale_x))
+                ball_height = max(1, round(192 * motion.scale_y))
+                actor_ball = ball.resize(
+                    (ball_width, ball_height),
+                    Image.Resampling.LANCZOS,
                 )
+                x, y = motion.center
                 image.alpha_composite(
-                    tilt, (round(x - tilt.width / 2), round(y - tilt.height / 2))
+                    actor_ball,
+                    (
+                        round(x - actor_ball.width / 2),
+                        round(y - actor_ball.height / 2),
+                    ),
                 )
-            image.convert("RGB").save(frames / f"{frame:04}.jpg", quality=92)
+
+            image.convert("RGB").save(
+                frames / f"{frame:04}.jpg",
+                quality=95,
+                subsampling=0,
+            )
         output = directory / "streak-story.mp4"
         command = [
                 "ffmpeg",
@@ -296,7 +488,7 @@ class StoryRenderer:
                 "-threads",
                 "2",
                 "-crf",
-                "27",
+                "25",
                 "-pix_fmt",
                 "yuv420p",
                 "-g",
