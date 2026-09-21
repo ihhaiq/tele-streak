@@ -153,8 +153,6 @@ def page_text(profile: Profile, state: dict, page: str) -> str:
         mark = "✅" if completed else "○"
         multiplier = 2 if state.get("event") == "double" else 1
         label = task_label(spec, profile.stats["owner"]["name"], profile.stats["peer"]["name"])
-        if completed:
-            label = f"~~{label}~~"
         lines.append(f"{mark} {label} · {spec.xp * multiplier} XP")
     bonus = ALL_TASKS_BONUS_XP * (2 if state.get("event") == "double" else 1)
     lines.extend(["", f"إكمال الـ6: +{bonus} XP", "تتجدد كل 6 ساعات"])
