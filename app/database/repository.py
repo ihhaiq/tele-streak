@@ -729,6 +729,14 @@ class Repository:
             )
             await db.commit()
 
+    async def delete_sticker_file_id(self, sticker_key: str) -> None:
+        async with self.database.connect() as db:
+            await db.execute(
+                "DELETE FROM sticker_cache WHERE sticker_key=?",
+                (sticker_key,),
+            )
+            await db.commit()
+
     async def cleanup_processed_messages(self, keep_days: int = 7) -> int:
         cutoff = (
             datetime.now(timezone.utc) - timedelta(days=keep_days)
