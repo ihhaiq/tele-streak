@@ -18,7 +18,12 @@ from app.adventures.tasks import (
     choose_tasks,
     task_slot,
 )
-from app.adventures.views import navigation, page_text, rich_page
+from app.adventures.views import (
+    adventure_notice_rich,
+    navigation,
+    page_text,
+    rich_page,
+)
 from app.database import adventure_repository as module
 from app.database.activation_repository import StreakActivationRepository
 from app.database.adventure_repository import (
@@ -470,6 +475,9 @@ def test_single_task_completion_emits_notice_and_persists_done_state(tmp_path, m
             assert daily["done"] == ["owner_texts_1"]
             assert "مهمة خلصت:" in daily["latest_notice"]
             assert "حسين يرسل 1 رسالة نصية" in daily["latest_notice"]
+            assert daily["latest_notice_kind"] == "task"
+            assert daily["latest_task_keys"] == ["owner_texts_1"]
+            assert daily["latest_task_by"] == "حسين"
             assert profile.shared_xp > 0
 
             second = await send(repo, 2, words=3)
@@ -497,6 +505,30 @@ def test_completed_task_is_checked_and_struck_in_fresh_views():
     assert "✅" in rich.html
     assert "<s>حسين يرسل 1 رسالة نصية</s>" in rich.html
     assert "<s>أحمد يرسل 1 صورة</s>" not in rich.html
+
+
+def test_task_completion_notice_is_minimal_rich_message():
+    profile = Profile()
+    profile.stats["owner"]["name"] = "حسين"
+    profile.stats["peer"]["name"] = "أحمد"
+    daily = state(("owner_texts_1", "peer_photo_1"))
+    daily.update(
+        latest_notice_kind="task",
+        latest_task_keys=["owner_texts_1"],
+        latest_task_by="حسين",
+    )
+
+    rich = adventure_notice_rich(profile, daily, 10, 20)
+
+    assert "حسين يرسل 1 رسالة نصية" in rich.html
+    assert "أحمد يرسل 1 صورة" not in rich.html
+    assert "<footer>بواسطة حسين</footer>" in rich.html
+    assert "<details><summary>التفاصيل</summary>" in rich.html
+    assert "<table compact>" in rich.html
+    assert rich.html.count("<tg-button") == 5
+    assert "XP" not in rich.html
+    assert "Combo" not in rich.html
+    assert "المستوى" not in rich.html
 
 
 def test_task_catalog_has_more_than_300_real_tasks():

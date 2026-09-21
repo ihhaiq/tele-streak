@@ -200,6 +200,19 @@ async def record_activity(
         state["latest_notice"] = (
             "🔥 بدأ الستريك بينكم! Jake فرحان ببدايتكم 🎉\n" if celebrate else ""
         ) + "\n".join(state.pop("pending", []))
+        if completed_tasks:
+            actor_name = (
+                activity.name[:80]
+                or profile.stats[activity.role]["name"]
+                or ("الطرف الأول" if activity.role == "owner" else "الطرف الثاني")
+            )
+            state["latest_notice_kind"] = "task"
+            state["latest_task_keys"] = completed_tasks
+            state["latest_task_by"] = actor_name
+        else:
+            state["latest_notice_kind"] = "general"
+            state["latest_task_keys"] = []
+            state["latest_task_by"] = ""
     await save_profile(db, key, profile)
     await save_day(db, key, day, state)
     return notify, celebrate

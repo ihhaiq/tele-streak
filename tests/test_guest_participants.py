@@ -50,9 +50,30 @@ def context(event, *, reject_rich=False):
 @pytest.mark.parametrize("event", ["adventure", "celebration"])
 async def test_adventure_has_no_revive_state_lookup(event):
     repo, message, adventures, guests, revive = context(event)
+    if event == "adventure":
+        profile = Profile()
+        profile.stats["owner"]["name"] = "حسين"
+        profile.stats["peer"]["name"] = "أحمد"
+        adventures.snapshot.return_value = (
+            profile,
+            {
+                "latest_notice": "قديم",
+                "latest_notice_kind": "task",
+                "latest_task_keys": ["owner_texts_1"],
+                "latest_task_by": "حسين",
+            },
+        )
     handler = build_router(repo, SimpleNamespace(), revive, guests, adventures).guest_message.handlers[0].callback
     await handler(message)
     message.answer_guest_query.assert_awaited_once()
+    if event == "adventure":
+        result = message.answer_guest_query.await_args.args[0]
+        assert isinstance(result.input_message_content, InputRichMessageContent)
+        assert result.reply_markup is None
+        html = result.input_message_content.rich_message.html
+        assert "<footer>بواسطة حسين</footer>" in html
+        assert "<details><summary>التفاصيل</summary>" in html
+        assert "<table compact>" in html
     revive.create_or_get.assert_not_awaited()
     message.bot.get_chat.assert_not_awaited()
     repo.finish_guest_streak_request.assert_awaited_once_with("AbCd_123")
