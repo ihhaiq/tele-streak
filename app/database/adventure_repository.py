@@ -164,6 +164,7 @@ async def record_activity(
     else:
         ensure_task_slot(state, activity.at)
     celebrate = completed and restarted and not state["completed"]
+    before_done = set(state.get("done", ()))
     before_all = state["all_bonus"]
     notes, shield = apply_activity(
         profile,
@@ -173,17 +174,23 @@ async def record_activity(
         restarted=restarted,
         freeze_count=freeze_count,
     )
+    completed_tasks = [
+        task_key
+        for task_key in state.get("done", ())
+        if task_key not in before_done
+    ]
     if shield:
         await db.execute(
             """UPDATE streaks SET freeze_count=MIN(3,freeze_count+1)
             WHERE business_connection_id=? AND chat_id=?""",
             key,
         )
-    # إشعاران كحد أقصى: اكتمال اليوم، واكتمال كل المهام.
-    notify = (
-        bool(notes)
-        and (completed or (state["all_bonus"] and not before_all))
-        and state["notice_count"] < 2
+    # كل مهمة جديدة تستحق إشعارًا. إذا رسالة واحدة كملت أكثر من مهمة
+    # نجمعهن بإشعار واحد حتى ما نغرق المحادثة برسائل متتالية.
+    notify = bool(notes) and (
+        bool(completed_tasks)
+        or completed
+        or (state["all_bonus"] and not before_all)
     )
     if notes:
         previous = state.get("pending", [])
