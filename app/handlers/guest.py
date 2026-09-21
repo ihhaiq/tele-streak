@@ -211,13 +211,16 @@ def build_router(
                     id=f"celebration-{token}", sticker_file_id=file_id,
                     reply_markup=navigation(owner_user_id, request.chat_id))
             else:
-                owner_name = await user_label(message.bot, state.owner_user_id, "الطرف الأول")
-                peer_name = await user_label(message.bot, state.peer_user_id, "الطرف الثاني")
                 result = InlineQueryResultArticle(
-                    id=f"adventure-{token}", title="مغامرتكم اليوم 🎉",
+                    id=f"adventure-{token}",
+                    title="مغامرتكم اليوم 🎉",
                     input_message_content=InputTextMessageContent(
-                        message_text=adventure_state['latest_notice'] + "\n\n" + progress_text(profile)),
-                    reply_markup=navigation(owner_user_id, request.chat_id))
+                        message_text=adventure_state["latest_notice"]
+                        + "\n\n"
+                        + progress_text(profile)
+                    ),
+                    reply_markup=navigation(owner_user_id, request.chat_id),
+                )
         elif event == "status":
             if streak is None:
                 result = InlineQueryResultArticle(
@@ -414,7 +417,6 @@ def build_router(
                         message_text=BROKEN_NOTICE_TEXT,
                     ),
                 )
-                await message.answer_guest_query(fallback)
                 await message.answer_guest_query(fallback)
             elif event == "status" and streak is not None:
                 logger.warning(
