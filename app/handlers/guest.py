@@ -313,7 +313,9 @@ def build_router(
                 else InlineQueryResultArticle(
                     id=f"streak-warning-fallback-{token}",
                     title="تنبيه الستريك",
-                    input_message_content=InputTextMessageContent(message_text="⏰ تنبيه الستريك"),
+                    input_message_content=InputTextMessageContent(
+                        message_text="⏰ تنبيه الستريك"
+                    ),
                 )
             )
         elif event == "warning_notice":
@@ -371,11 +373,26 @@ def build_router(
                     ),
                 )
             else:
+                owner_name = await user_label(
+                    message.bot,
+                    state.owner_user_id,
+                    "الطرف الأول",
+                )
+                peer_name = await user_label(
+                    message.bot,
+                    state.peer_user_id,
+                    "الطرف الثاني",
+                )
+
                 result = InlineQueryResultArticle(
                     id=f"streak-revive-{token}",
                     title="طلب إحياء الستريك",
                     input_message_content=InputTextMessageContent(
-                        message_text=_revive_text(state, owner_name, peer_name)
+                        message_text=_revive_text(
+                            state,
+                            owner_name,
+                            peer_name,
+                        )
                     ),
                     reply_markup=_revive_keyboard(state.token),
                 )
@@ -397,6 +414,7 @@ def build_router(
                         message_text=BROKEN_NOTICE_TEXT,
                     ),
                 )
+                await message.answer_guest_query(fallback)
                 await message.answer_guest_query(fallback)
             elif event == "status" and streak is not None:
                 logger.warning(
