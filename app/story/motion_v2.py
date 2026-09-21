@@ -727,20 +727,8 @@ class JakeRig:
         draw = ImageDraw.Draw(image)
         for left, top, right, bottom in self.landmarks.eye_boxes:
             cx, cy = (left + right) / 2, (top + bottom) / 2
-            rx, ry = (right - left) / 2, (bottom - top) / 2
-            if self.celebration:
-                # Keep the existing eye outline and muzzle; redraw only the interior.
-                draw.ellipse(
-                    (left + 3, top + 3, right - 3, bottom - 3),
-                    fill=(255, 253, 241, 255),
-                )
-                px = cx + pose.gaze[0] * rx * 0.30
-                py = cy + pose.gaze[1] * ry * 0.30
-                radius = rx * 0.22
-                draw.ellipse(
-                    (px - radius, py - radius, px + radius, py + radius),
-                    fill=(30, 25, 19, 255),
-                )
+            # عين Jake بهذي الوضعية جزء من الرسم الأصلي: بياض كامل وحد أسود.
+            # لا نرسم pupil ولا نغطي داخل العين؛ هذا كان يغير شكله عن المرجع.
             if pose.blink > 0:
                 # Compress the complete eye continuously, instead of switching to a line.
                 box = (left, top, right, bottom)
