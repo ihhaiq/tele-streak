@@ -5,6 +5,7 @@ import random
 import shutil
 import subprocess
 import unicodedata
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -43,6 +44,66 @@ def centered(draw, text, y, size, fill, width=640):
         anchor="mm",
         fill=fill,
         direction="rtl" if any("\u0600" <= c <= "\u06ff" for c in text) else "ltr",
+    )
+
+
+
+@dataclass(frozen=True, slots=True)
+class _MotionLayout:
+    jake_scale: float
+    jake_y: float
+    ball_centers: tuple[tuple[float, float], tuple[float, float]]
+    ball_scales: tuple[float, float]
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _ease_out_cubic(value: float) -> float:
+    value = _clamp01(value)
+    return 1.0 - (1.0 - value) ** 3
+
+
+def _lerp(start: float, end: float, amount: float) -> float:
+    return start + (end - start) * amount
+
+
+def _motion_layout(t: float) -> _MotionLayout:
+    """حركة هادئة بدون تشويه الشخصية أو رمي الصور بشكل مبالغ."""
+    t = max(0.0, float(t))
+    intro = _ease_out_cubic(t / 0.72)
+    settled_t = max(0.0, t - 0.72)
+    breathe = math.sin(2 * math.pi * settled_t / 3.4) if t >= 0.72 else 0.0
+
+    # نفس النسبة للعرض والارتفاع حتى Jake ما يتمدد أو ينضغط بين الفريمات.
+    jake_scale = 0.94 + 0.06 * intro + 0.004 * breathe
+    jake_y = 824 - 24 * intro + 3 * breathe
+
+    final_centers = ((166.0, 570.0), (554.0, 570.0))
+    start_centers = ((-110.0, 606.0), (830.0, 606.0))
+    centers: list[tuple[float, float]] = []
+    scales: list[float] = []
+
+    for index in range(2):
+        delay = 0.14 + index * 0.14
+        progress = _ease_out_cubic((t - delay) / 0.68)
+        hover_t = max(0.0, t - delay)
+        hover = math.sin(2 * math.pi * hover_t / 3.2 + index * math.pi) * 4 * progress
+        drift = math.sin(2 * math.pi * hover_t / 4.4 + index * math.pi) * 2 * progress
+        centers.append(
+            (
+                _lerp(start_centers[index][0], final_centers[index][0], progress) + drift,
+                _lerp(start_centers[index][1], final_centers[index][1], progress) + hover,
+            )
+        )
+        scales.append(0.90 + 0.10 * progress)
+
+    return _MotionLayout(
+        jake_scale=jake_scale,
+        jake_y=jake_y,
+        ball_centers=(centers[0], centers[1]),
+        ball_scales=(scales[0], scales[1]),
     )
 
 
@@ -228,49 +289,72 @@ class StoryRenderer:
         rng = random.Random(84)
         confetti = [
             (
-                rng.randrange(WIDTH),
-                rng.randrange(HEIGHT),
+                rng.randrange(30, WIDTH - 30),
+                rng.randrange(360, 1060),
                 rng.choice(palette),
-                rng.uniform(30, 75),
+                rng.uniform(12, 28),
             )
-            for _ in range(48)
+            for _ in range(30)
         ]
         for frame in range(duration * FPS):
             t = frame / FPS
+            layout = _motion_layout(t)
             image = background.copy().convert("RGBA")
             draw = ImageDraw.Draw(image)
+
+            # قصاصات قليلة وبطيئة؛ تبقى خلف الشخصيات بدل ما تصير ضوضاء مستمرة.
             for x, y, color, speed in confetti:
-                yy = (y + t * speed) % HEIGHT
-                if 370 < yy < 1070:
+                yy = 360 + ((y - 360 + t * speed) % 700)
+                if not (520 < yy < 1010 and 125 < x < 595):
                     draw.rounded_rectangle(
-                        (x, yy, x + 5, yy + 11), radius=2, fill=color
+                        (x, yy, x + 4, yy + 8), radius=2, fill=color
                     )
-            beat = math.sin(2 * math.pi * t)
-            draw.ellipse((225, 982, 495, 1014), fill="#14192f")
-            actor = jake.resize(
-                (420 + int(8 * beat), 420 - int(12 * beat)), Image.Resampling.BICUBIC
+
+            actor_size = max(1, round(420 * layout.jake_scale))
+            shadow_width = round(236 * layout.jake_scale)
+            shadow_y = round(layout.jake_y + actor_size * 0.47)
+            draw.ellipse(
+                (
+                    360 - shadow_width // 2,
+                    shadow_y - 10,
+                    360 + shadow_width // 2,
+                    shadow_y + 10,
+                ),
+                fill=(12, 16, 34, 150),
             )
-            actor = actor.rotate(
-                5 * math.sin(math.pi * t), Image.Resampling.BICUBIC, expand=True
+            actor = jake.resize(
+                (actor_size, actor_size),
+                Image.Resampling.LANCZOS,
             )
             image.alpha_composite(
                 actor,
-                (360 - actor.width // 2, 795 - actor.height // 2 - int(15 * abs(beat))),
+                (
+                    360 - actor.width // 2,
+                    round(layout.jake_y - actor.height / 2),
+                ),
             )
-            for i, ball in enumerate(balls):
-                phase = (t / 2 + i * 0.5) % 1
-                # رمية لكل يد، بمسار ناعم يرجع لنفس موضعه.
-                x = 190 + 340 * i + 35 * math.sin(2 * math.pi * phase)
-                y = 685 - 210 * (0.5 - 0.5 * math.cos(2 * math.pi * phase))
-                tilt = ball.rotate(
-                    9 * math.sin(2 * math.pi * phase),
-                    Image.Resampling.BICUBIC,
-                    expand=True,
+
+            # الصور تدخل مرة واحدة من الجانبين، وبعدها hover خفيف بدون رمي أو دوران.
+            for index, ball in enumerate(balls):
+                ball_size = max(1, round(192 * layout.ball_scales[index]))
+                actor_ball = ball.resize(
+                    (ball_size, ball_size),
+                    Image.Resampling.LANCZOS,
                 )
+                x, y = layout.ball_centers[index]
                 image.alpha_composite(
-                    tilt, (round(x - tilt.width / 2), round(y - tilt.height / 2))
+                    actor_ball,
+                    (
+                        round(x - actor_ball.width / 2),
+                        round(y - actor_ball.height / 2),
+                    ),
                 )
-            image.convert("RGB").save(frames / f"{frame:04}.jpg", quality=92)
+
+            image.convert("RGB").save(
+                frames / f"{frame:04}.jpg",
+                quality=95,
+                subsampling=0,
+            )
         output = directory / "streak-story.mp4"
         command = [
                 "ffmpeg",
@@ -296,7 +380,7 @@ class StoryRenderer:
                 "-threads",
                 "2",
                 "-crf",
-                "27",
+                "25",
                 "-pix_fmt",
                 "yuv420p",
                 "-g",
