@@ -290,12 +290,12 @@ class StoryRenderer:
         directory.mkdir(parents=True, exist_ok=True)
         output = directory / "streak-story.jpg"
         card = story_card(days=days, names=names, photos=photos)
-        card.resize((1080, 1920), Image.Resampling.LANCZOS).save(
+        card.resize((720, 1280), Image.Resampling.LANCZOS).save(
             output,
             "JPEG",
-            quality=92,
-            optimize=True,
-            progressive=True,
+            quality=84,
+            optimize=False,
+            progressive=False,
         )
         return output
 
@@ -480,8 +480,9 @@ class StoryRenderer:
 
             image.convert("RGB").save(
                 frames / f"{frame:04}.jpg",
-                quality=95,
-                subsampling=0,
+                quality=80,
+                subsampling=2,
+                optimize=False,
             )
         output = directory / "streak-story.mp4"
         command = [
@@ -502,29 +503,29 @@ class StoryRenderer:
                 "0:v:0",
                 *(["-map", "1:a:0"] if music else []),
                 "-c:v",
-                "libx265",
+                "libx264",
                 "-preset",
-                "fast",
+                "veryfast",
                 "-threads",
-                "2",
+                "1",
                 "-crf",
-                "24",
+                "29",
                 "-pix_fmt",
                 "yuv420p",
+                "-profile:v",
+                "main",
                 "-g",
                 str(FPS),
                 "-keyint_min",
                 str(FPS),
                 "-sc_threshold",
                 "0",
-                "-tag:v",
-                "hvc1",
                 "-movflags",
                 "+faststart",
         ]
         if music:
             command += [
-                "-c:a", "aac", "-b:a", "128k", "-af",
+                "-c:a", "aac", "-b:a", "96k", "-af",
                 f"afade=t=in:st=0:d=0.2,afade=t=out:st={duration - 0.4}:d=0.4",
             ]
         command += [str(output)]
