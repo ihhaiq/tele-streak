@@ -4,7 +4,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw, ImageStat
+from PIL import Image, ImageDraw
 
 FPS = 30
 HAND_Y = 655.0
@@ -32,6 +32,8 @@ class BallMotion:
     target_hand: int
     front: bool
     vertical_velocity: float
+    time_to_launch: float
+    time_since_catch: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +166,21 @@ def ball_motion(
     if shifted < 0:
         hand = index
         center = LEFT_HAND if hand == 0 else RIGHT_HAND
-        return BallMotion(center, 1.0, 1.0, False, 0.0, hand, 1 - hand, index == 0, 0.0)
+        return BallMotion(
+            center,
+            1.0,
+            1.0,
+            False,
+            0.0,
+            hand,
+            1 - hand,
+            index == 0,
+            0.0,
+            -shifted,
+            0.0,
+            max(0.0, hold - caught),
+            max(0.0, caught),
+        )
 
     # نحتاج دورة متغيرة لأن بعض رميات 10s/milestone أطول.
     elapsed = shifted
@@ -209,6 +225,8 @@ def ball_motion(
             target_hand,
             front,
             current_vy,
+            0.0,
+            0.0,
         )
     else:
         caught = local - flight
@@ -244,6 +262,8 @@ def ball_motion(
             motion.target_hand,
             True,
             motion.vertical_velocity * (1.0 - amount),
+            motion.time_to_launch,
+            motion.time_since_catch,
         )
 
     return motion
@@ -300,28 +320,42 @@ def _event_reaction(t: float, *, days: int, duration: int) -> float:
 
 
 def _hand_offsets(
-    t: float,
     balls: tuple[BallMotion, BallMotion],
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     offsets = [[0.0, 0.0], [0.0, 0.0]]
 
     for motion in balls:
         if motion.airborne:
-            # anticipation + follow-through لليد اللي رمت.
+            # follow-through بعد الإفلات.
             if motion.progress < 0.18:
                 amount = 1.0 - motion.progress / 0.18
-                offsets[motion.source_hand][0] += (8.0 if motion.source_hand == 0 else -8.0) * amount
-                offsets[motion.source_hand][1] += 12.0 * amount
+                offsets[motion.source_hand][0] += (
+                    7.0 if motion.source_hand == 0 else -7.0
+                ) * amount
+                offsets[motion.source_hand][1] -= 8.0 * amount
 
             # اليد المستقبلة تطلع باتجاه الكرة قبل الالتقاط.
             if motion.progress > 0.76:
                 amount = smoothstep((motion.progress - 0.76) / 0.24)
                 hand_x, hand_y = LEFT_HAND if motion.target_hand == 0 else RIGHT_HAND
-                offsets[motion.target_hand][0] += (motion.center[0] - hand_x) * 0.18 * amount
-                offsets[motion.target_hand][1] += (motion.center[1] - hand_y) * 0.22 * amount
+                offsets[motion.target_hand][0] += (
+                    motion.center[0] - hand_x
+                ) * 0.18 * amount
+                offsets[motion.target_hand][1] += (
+                    motion.center[1] - hand_y
+                ) * 0.22 * amount
         else:
-            # امتصاص قصير بعد الالتقاط.
-            offsets[motion.target_hand][1] += 3.0 * math.exp(-7.0 * max(0.0, t - 0.01))
+            # anticipation قبل الرمية: اليد تنزل للخلف لحظة ثم تنطلق.
+            if 0.0 < motion.time_to_launch < 0.20:
+                amount = smoothstep((0.20 - motion.time_to_launch) / 0.20)
+                hand = motion.target_hand if motion.time_since_catch > 0 else motion.source_hand
+                offsets[hand][0] += (-9.0 if hand == 0 else 9.0) * amount
+                offsets[hand][1] += 11.0 * amount
+
+            # امتصاص الالتقاط بدل توقف الكرة واليد بشكل مفاجئ.
+            if 0.0 <= motion.time_since_catch < 0.18:
+                amount = 1.0 - smoothstep(motion.time_since_catch / 0.18)
+                offsets[motion.target_hand][1] += 8.0 * amount
 
     return (
         (offsets[0][0], offsets[0][1]),
@@ -367,7 +401,7 @@ def motion_layout(
             center_y=center_y,
             sway=sway,
             head_nod=head_nod,
-            hand_offsets=_hand_offsets(t, balls),
+            hand_offsets=_hand_offsets(balls),
             blink=_blink_amount(t),
         ),
         balls=balls,
