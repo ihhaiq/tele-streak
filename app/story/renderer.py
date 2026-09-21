@@ -541,7 +541,7 @@ class StoryRenderer:
         subprocess.run(
             command,
             check=True,
-            timeout=90,
+            timeout=180,
             capture_output=True,
         )
         return output
