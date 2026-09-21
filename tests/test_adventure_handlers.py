@@ -10,7 +10,10 @@ from aiogram.types import CallbackQuery, Chat, InputRichMessage, Message, User
 from app.adventures.rules import Profile
 from app.adventures.views import rich_buttons, rich_page, rich_story_page
 from app.handlers.adventures import build_router, edit_page, story_menu
-from app.handlers.business import build_router as business_router
+from app.handlers.business import (
+    build_router as business_router,
+    parse_task_notifications_command,
+)
 from app.handlers.streak_mode import build_mode_menu
 from app.services.adventure_service import AdventureService
 from app.services.rich_status import build_streak_rich_message
@@ -84,20 +87,46 @@ def test_inline_rich_rejection_falls_back_without_losing_buttons():
 
 def test_notification_mute_and_guest_delivery():
     async def run():
+        record = SimpleNamespace(
+            notifications_enabled=False,
+            task_notifications_enabled=True,
+        )
         repo = SimpleNamespace(
             database=None,
-            get_streak=AsyncMock(
-                return_value=SimpleNamespace(notifications_enabled=False)
-            ),
+            get_streak=AsyncMock(return_value=record),
             get_owner_id=AsyncMock(return_value=10),
         )
         guests = SimpleNamespace(summon=AsyncMock(return_value=True))
         bot = SimpleNamespace(send_sticker=AsyncMock(), send_message=AsyncMock())
         service = AdventureService(bot, repo, guests)
+        service.snapshot = AsyncMock(
+            return_value=(Profile(), {"latest_notice_kind": "task"})
+        )
         completion = Completion(True, 1, "pose", False, True, True)
+
         await service.after_activity("bc", 20, completion)
         guests.summon.assert_not_awaited()
-        repo.get_streak.return_value.notifications_enabled = True
+
+        record.notifications_enabled = True
+        record.task_notifications_enabled = False
+        await service.after_activity("bc", 20, completion)
+        assert [c.kwargs["event"] for c in guests.summon.await_args_list] == [
+            "celebration",
+        ]
+
+        guests.summon.reset_mock()
+        service.snapshot.return_value = (
+            Profile(),
+            {"latest_notice_kind": "general"},
+        )
+        await service.after_activity("bc", 20, completion)
+        assert [c.kwargs["event"] for c in guests.summon.await_args_list] == [
+            "celebration",
+            "adventure",
+        ]
+
+        guests.summon.reset_mock()
+        record.task_notifications_enabled = True
         await service.after_activity("bc", 20, completion)
         assert [c.kwargs["event"] for c in guests.summon.await_args_list] == [
             "celebration",
@@ -105,6 +134,53 @@ def test_notification_mute_and_guest_delivery():
         ]
         bot.send_sticker.assert_not_awaited()
         bot.send_message.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_task_notification_command_aliases():
+    assert parse_task_notifications_command("تعطيل الاشعارات") is False
+    assert parse_task_notifications_command("تعطيل إشعارات المهام") is False
+    assert parse_task_notifications_command("/mutetasks") is False
+    assert parse_task_notifications_command("تفعيل الاشعارات") is True
+    assert parse_task_notifications_command("تشغيل إشعارات المهام") is True
+    assert parse_task_notifications_command("/unmutetasks") is True
+    assert parse_task_notifications_command("ستريك") is None
+
+
+def test_task_notification_command_changes_only_current_chat():
+    async def run():
+        streaks = SimpleNamespace(
+            get_owner_id=AsyncMock(return_value=10),
+            register_message=AsyncMock(),
+        )
+        stickers = SimpleNamespace(send_notice_text=AsyncMock())
+        repo = SimpleNamespace(
+            resolve_active_connection_id=AsyncMock(return_value="bc"),
+            set_task_notifications=AsyncMock(return_value=False),
+        )
+        activations = SimpleNamespace()
+        guests = SimpleNamespace()
+        adventures = SimpleNamespace(handle_music_upload=AsyncMock(return_value=False))
+        router = business_router(
+            streaks, stickers, repo, activations, guests, adventures
+        )
+        message = Message(
+            message_id=1,
+            date=1,
+            business_connection_id="bc",
+            chat=Chat(id=20, type="private"),
+            from_user=User(id=10, is_bot=False, first_name="A"),
+            text="تعطيل الاشعارات",
+        )
+
+        await router.business_message.handlers[0].callback(message)
+
+        repo.set_task_notifications.assert_awaited_once_with("bc", 20, False)
+        streaks.register_message.assert_not_awaited()
+        sent = stickers.send_notice_text.await_args.kwargs
+        assert sent["chat_id"] == 20
+        assert "قائمة المهام" in sent["text"]
 
     asyncio.run(run())
 

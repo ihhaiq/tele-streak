@@ -38,6 +38,7 @@ def _details(streak: StreakRecord) -> str:
         f"أطول ستريك: {streak.longest_streak}",
         f"إجمالي أيام الستريك: {streak.completed_days}",
         f"وضع الستريك: {streak_mode_label(streak.streak_mode)}",
+        f"إشعارات المهام: {'مفعّلة' if streak.task_notifications_enabled else 'معطّلة'}",
     ]
     if streak.break_count > 0:
         lines.append(f"مرات الانقطاع: {streak.break_count}")

@@ -190,6 +190,26 @@ def test_timezone_and_chat_controls(tmp_path):
             yesterday="2026-09-15",
             choose_pose=lambda days, last: "pose",
         )
+        await repository.register_activity(
+            connection_id="bc-1",
+            chat_id=21,
+            message_id=2,
+            peer_user_id=None,
+            role="owner",
+            today="2026-09-16",
+            yesterday="2026-09-15",
+            choose_pose=lambda days, last: "pose",
+        )
+
+        assert await repository.set_task_notifications("bc-1", 20, False) is False
+        muted = await repository.get_owner_streak(10, 20)
+        other = await repository.get_owner_streak(10, 21)
+        assert muted is not None and muted.task_notifications_enabled is False
+        assert other is not None and other.task_notifications_enabled is True
+
+        assert await repository.set_task_notifications("bc-1", 20, True) is True
+        assert (await repository.get_owner_streak(10, 20)).task_notifications_enabled is True
+
         assert await repository.toggle_chat_setting(10, 20, "enabled") is False
         streak = await repository.get_owner_streak(10, 20)
         assert streak is not None

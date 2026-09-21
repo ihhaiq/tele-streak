@@ -115,7 +115,7 @@ def test_real_story_has_motion_arabic_h265_aac_and_portrait_dimensions(
         ],
         text=True,
     ).strip().splitlines()
-    assert frame_rate == Fraction(24, 1)
+    assert frame_rate == Fraction(30, 1)
     assert len(keyframes) >= duration
     assert audio["codec_name"] == "aac"
     assert abs(float(meta["format"]["duration"]) - duration) < 0.15

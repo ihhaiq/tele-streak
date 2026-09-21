@@ -31,6 +31,7 @@ class StreakRecord:
     last_warning_day: str | None
     last_broken_day: str | None
     notifications_enabled: bool
+    task_notifications_enabled: bool
     is_enabled: bool
     freeze_count: int
     auto_freeze: bool
@@ -102,6 +103,7 @@ class Repository:
             last_warning_day=row["last_warning_day"],
             last_broken_day=row["last_broken_day"],
             notifications_enabled=bool(row["notifications_enabled"]),
+            task_notifications_enabled=bool(row["task_notifications_enabled"]),
             is_enabled=bool(row["is_enabled"]),
             freeze_count=int(row["freeze_count"]),
             auto_freeze=bool(row["auto_freeze"]),
@@ -1068,6 +1070,27 @@ class Repository:
             value = bool((await cursor.fetchone())[column])
             await db.commit()
             return value
+
+    async def set_task_notifications(
+        self,
+        connection_id: str,
+        chat_id: int,
+        enabled: bool,
+    ) -> bool | None:
+        async with self.database.connect() as db:
+            cursor = await db.execute(
+                """
+                UPDATE streaks
+                SET task_notifications_enabled=?, updated_at=?
+                WHERE business_connection_id=? AND chat_id=?
+                """,
+                (int(enabled), self._now(), connection_id, chat_id),
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                return None
+            await db.commit()
+            return enabled
 
     async def set_streak_mode(
         self,
