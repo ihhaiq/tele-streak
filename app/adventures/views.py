@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputRichM
 
 from .achievements import BADGES
 from .rules import EVENTS, Profile, level_progress
-from .tasks import ALL_TASKS_BONUS_XP, active_task_specs, task_label
+from .tasks import ALL_TASKS_BONUS_XP, active_task_specs, task_label, task_spec
 
 
 _NAV_ITEMS = (
@@ -107,6 +107,65 @@ def rich_buttons(
 
     return _compact_button_table(buttons)
 
+
+
+def adventure_notice_text(profile: Profile, state: dict) -> str:
+    if state.get("latest_notice_kind") == "task":
+        labels = [
+            task_label(
+                task_spec(key),
+                profile.stats["owner"]["name"],
+                profile.stats["peer"]["name"],
+            )
+            for key in state.get("latest_task_keys", ())
+        ]
+        actor = state.get("latest_task_by") or "غير معروف"
+        return "\n".join([*(f"✅ {label}" for label in labels), f"بواسطة {actor}"])
+
+    return state.get("latest_notice", "") or "تم تحديث المغامرة."
+
+
+def adventure_notice_rich(
+    profile: Profile,
+    state: dict,
+    owner: int,
+    chat: int,
+) -> InputRichMessage:
+    if state.get("latest_notice_kind") == "task":
+        labels = [
+            task_label(
+                task_spec(key),
+                profile.stats["owner"]["name"],
+                profile.stats["peer"]["name"],
+            )
+            for key in state.get("latest_task_keys", ())
+        ]
+        actor = escape(state.get("latest_task_by") or "غير معروف")
+        tasks = "".join(
+            f"<p>✅ <b>{escape(label)}</b></p>"
+            for label in labels
+        ) or "<p>✅ تمت المهمة</p>"
+        html = (
+            tasks
+            + f"<footer>بواسطة {actor}</footer>"
+            + "<details><summary>التفاصيل</summary>"
+            + rich_buttons(owner, chat, include_status=True)
+            + "</details>"
+        )
+        return InputRichMessage(html=html, is_rtl=True)
+
+    notice = escape(state.get("latest_notice", "") or "تم تحديث المغامرة.").replace(
+        "\n", "<br>"
+    )
+    return InputRichMessage(
+        html=(
+            f"<p>{notice}</p>"
+            "<details><summary>التفاصيل</summary>"
+            + rich_buttons(owner, chat, include_status=True)
+            + "</details>"
+        ),
+        is_rtl=True,
+    )
 
 def _compare_comment(ratio: int) -> str:
     if abs(ratio - 50) <= 10:
