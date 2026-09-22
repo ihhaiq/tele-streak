@@ -17,7 +17,7 @@ from app.stickers.pack_builder import ReadyPackBuilder
 
 logger = logging.getLogger(__name__)
 PACK_SIZE = 120
-PACK_ASSET_VERSION = 2
+PACK_ASSET_VERSION = 3
 MAX_ATTEMPTS = 5
 UPLOAD_PAUSE_SECONDS = 0.75
 PART_PAUSE_SECONDS = 1.5
@@ -70,11 +70,20 @@ class StickerPack:
             )
         return output
 
+    def normalized_numbered_path(self, days: int) -> Path:
+        return self._normalize_asset(str(days), self.ready_dir / f"{days:03}.webp")
+
+    def normalized_special_path(self, name: str) -> Path:
+        return self._normalize_asset(
+            name,
+            self.ready_dir.parent / "special" / f"{name}.webp",
+        )
+
     def _assets(self) -> list[PackAsset]:
         numbered = [
             PackAsset(
                 str(day),
-                self._normalize_asset(str(day), self.ready_dir / f"{day:03}.webp"),
+                self.normalized_numbered_path(day),
                 "🔥",
             )
             for day in range(1, 251)
@@ -83,12 +92,12 @@ class StickerPack:
         return numbered + [
             PackAsset(
                 "warning",
-                self._normalize_asset("warning", special / "warning.webp"),
+                self.normalized_special_path("warning"),
                 "⏰",
             ),
             PackAsset(
                 "broken",
-                self._normalize_asset("broken", special / "broken.webp"),
+                self.normalized_special_path("broken"),
                 "💔",
             ),
         ]
@@ -127,6 +136,10 @@ class StickerPack:
             # Image generation + normalization is CPU/disk heavy. Keep it off
             # the bot event loop so commands such as "ستريك" remain responsive.
             await asyncio.to_thread(self.builder.ensure)
+            # 017 in the reviewed 1-60 set had a clipped/corrupted crop.
+            # Rebuild it from the pose sheet before normalization so every
+            # upload path receives the repaired artwork.
+            await asyncio.to_thread(self.builder.ensure, 17, 17, force=True)
             assets = await asyncio.to_thread(self._assets)
             if any(not asset.path.is_file() for asset in assets):
                 raise RuntimeError("sticker pack has missing assets")
