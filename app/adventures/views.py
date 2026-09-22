@@ -270,27 +270,52 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
     level, current, needed = level_progress(profile.shared_xp)
     done = set(state.get("done", ()))
     multiplier = 2 if state.get("event") == "double" else 1
-    rows: list[str] = []
+    owner_name = profile.stats["owner"]["name"] or "الطرف الأول"
+    peer_name = profile.stats["peer"]["name"] or "الطرف الثاني"
+    owner_cells: list[str] = []
+    peer_cells: list[str] = []
+    shared_rows: list[str] = []
 
     for spec in active_task_specs(state):
         completed = spec.key in done
         mark = "✅" if completed else "○"
-        label = escape(
-            task_label(
-                spec,
-                profile.stats["owner"]["name"],
-                profile.stats["peer"]["name"],
-            )
-        )
+        label = task_label(spec, owner_name, peer_name)
+
+        if spec.role:
+            role_name = owner_name if spec.role == "owner" else peer_name
+            if label.startswith(role_name):
+                label = label[len(role_name):].lstrip()
+
+        label = escape(label)
         if completed:
             label = f"<s>{label}</s>"
+
+        cell = (
+            f"{mark} {label}<br>"
+            f"<b>{spec.xp * multiplier} XP</b>"
+        )
+        if spec.role == "owner":
+            owner_cells.append(cell)
+        elif spec.role == "peer":
+            peer_cells.append(cell)
+        else:
+            shared_rows.append(
+                "<tr>"
+                f"<td colspan=\"2\" align=\"center\"><b>مهمة مشتركة</b><br>{cell}</td>"
+                "</tr>"
+            )
+
+    rows: list[str] = []
+    for index in range(max(len(owner_cells), len(peer_cells))):
+        owner_cell = owner_cells[index] if index < len(owner_cells) else ""
+        peer_cell = peer_cells[index] if index < len(peer_cells) else ""
         rows.append(
             "<tr>"
-            f"<td align=\"center\">{mark}</td>"
-            f"<td>{label}</td>"
-            f"<td align=\"center\"><b>{spec.xp * multiplier}</b></td>"
+            f"<td>{owner_cell}</td>"
+            f"<td>{peer_cell}</td>"
             "</tr>"
         )
+    rows.extend(shared_rows)
 
     event = (
         f"<p><b>{escape(EVENTS[state['event']])}</b></p>"
@@ -306,7 +331,7 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
             f"{current}/{needed} XP · الإجمالي <b>{profile.shared_xp}</b></p>"
             + event
             + "<table compact>"
-            "<tr><th></th><th>المهمة</th><th>XP</th></tr>"
+            f"<tr><th><b>{escape(owner_name)}</b></th><th><b>{escape(peer_name)}</b></th></tr>"
             + "".join(rows)
             + "</table>"
             f"<footer>إكمال الـ6: +{bonus} XP · تتجدد كل 6 ساعات</footer>"
