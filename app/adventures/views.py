@@ -279,12 +279,20 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
     for spec in active_task_specs(state):
         completed = spec.key in done
         mark = "✅" if completed else "○"
-        label = task_label(spec, owner_name, peer_name)
-
         if spec.role:
+            label = task_label(spec, owner_name, peer_name)
             role_name = owner_name if spec.role == "owner" else peer_name
             if label.startswith(role_name):
                 label = label[len(role_name):].lstrip()
+        elif spec.rule in {"pair_kind", "split_messages"}:
+            label = (
+                spec.label.replace("الأول ", "لازم واحد يرسل ", 1)
+                .replace(" · الثاني ", " والثاني يرسل ", 1)
+            )
+        elif spec.label.startswith("كل واحد "):
+            label = "لازم كل واحد منكم " + spec.label[len("كل واحد "):]
+        else:
+            label = "لازم " + spec.label
 
         label = escape(label)
         if completed:
@@ -330,7 +338,7 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
             f"<p><b>المستوى {level}</b> · Combo ×{profile.combo}<br>"
             f"{current}/{needed} XP · الإجمالي <b>{profile.shared_xp}</b></p>"
             + event
-            + "<table compact>"
+            + "<table bordered>"
             f"<tr><th><b>{escape(owner_name)}</b></th><th><b>{escape(peer_name)}</b></th></tr>"
             + "".join(rows)
             + "</table>"
