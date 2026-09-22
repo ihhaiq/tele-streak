@@ -252,8 +252,9 @@ def test_task_navigation_renders_latest_completed_state():
         query.answer.assert_awaited_once()
         adventures.snapshot.assert_awaited_once()
         rich = bot.edit_message_text.await_args.kwargs["rich_message"]
-        assert "<s>حسين يرسل 1 رسالة نصية</s>" in rich.html
-        assert "<s>أحمد يرسل 1 صورة</s>" not in rich.html
+        assert "<th><b>حسين</b></th><th><b>أحمد</b></th>" in rich.html
+        assert "<s>يرسل 1 رسالة نصية</s>" in rich.html
+        assert "<s>يرسل 1 صورة</s>" not in rich.html
 
     asyncio.run(run())
 
@@ -386,7 +387,8 @@ def test_tasks_page_explains_combo_in_plain_iraqi():
     rich = rich_page(profile, daily, "tasks", 10, 20)
 
     assert "<table compact>" in rich.html
-    assert "<th>المهمة</th><th>XP</th>" in rich.html
+    assert "<th><b>الطرف الأول</b></th><th><b>الطرف الثاني</b></th>" in rich.html
+    assert "<th>المهمة</th><th>XP</th>" not in rich.html
     assert "تتجدد كل 6 ساعات" in rich.html
     assert "الـCombo يعني شكد يوم ورا بعض" in rich.html
     assert "إذا خلصتوه بعد 10" in rich.html
