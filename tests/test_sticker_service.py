@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from PIL import Image
 from aiogram.exceptions import TelegramBadRequest
 
 from app.services.rich_status import build_streak_rich_message
@@ -77,7 +78,9 @@ def test_channel_success_uses_plain_channel_delivery_and_caches_file_id(tmp_path
     async def run():
         ready = tmp_path / "ready"
         ready.mkdir()
-        (ready / "001.webp").touch()
+        Image.new("RGBA", (512, 512), (0, 0, 0, 0)).save(
+            ready / "001.webp", "WEBP"
+        )
         bot = SimpleNamespace(
             send_sticker=AsyncMock(
                 return_value=SimpleNamespace(
@@ -107,7 +110,7 @@ def test_channel_success_uses_plain_channel_delivery_and_caches_file_id(tmp_path
         assert kwargs["reply_markup"].inline_keyboard[0][0].text == "🔥 1"
         assert kwargs["reply_markup"].inline_keyboard[0][0].callback_data == "streak_days:1"
         repository.set_sticker_file_id.assert_awaited_once_with(
-            "streak:1",
+            "streak:v3:1",
             "channel-file-id",
         )
         bot.send_message.assert_not_awaited()
