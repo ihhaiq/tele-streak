@@ -353,6 +353,7 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
         is_rtl=True,
     )
 
+
 def _rich_badges(profile: Profile, owner: int, chat: int) -> InputRichMessage:
     if profile.badges:
         badges = "".join(
