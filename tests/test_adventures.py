@@ -503,8 +503,24 @@ def test_completed_task_is_checked_and_struck_in_fresh_views():
 
     rich = rich_page(profile, daily, "tasks", 10, 20)
     assert "✅" in rich.html
-    assert "<s>حسين يرسل 1 رسالة نصية</s>" in rich.html
-    assert "<s>أحمد يرسل 1 صورة</s>" not in rich.html
+    assert "<th><b>حسين</b></th><th><b>أحمد</b></th>" in rich.html
+    assert "<s>يرسل 1 رسالة نصية</s>" in rich.html
+    assert "<s>يرسل 1 صورة</s>" not in rich.html
+
+
+def test_shared_task_spans_both_participant_columns():
+    profile = Profile()
+    profile.stats["owner"]["name"] = "حسين"
+    profile.stats["peer"]["name"] = "علي"
+    daily = state(("owner_texts_1", "peer_photo_1", "total_messages_2"))
+
+    rich = rich_page(profile, daily, "tasks", 10, 20)
+
+    assert "<tr><th><b>حسين</b></th><th><b>علي</b></th></tr>" in rich.html
+    assert "<td>○ يرسل 1 رسالة نصية<br><b>11 XP</b></td>" in rich.html
+    assert "<td>○ يرسل 1 صورة<br><b>16 XP</b></td>" in rich.html
+    assert '<td colspan="2" align="center"><b>مهمة مشتركة</b><br>' in rich.html
+    assert "حسين وعلي: ترسلون 2 رسالة بالمجموع" in rich.html
 
 
 def test_task_completion_notice_is_minimal_rich_message():
