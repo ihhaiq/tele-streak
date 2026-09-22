@@ -518,7 +518,7 @@ def test_shared_task_spans_both_participant_columns():
 
     assert "<tr><th><b>حسين</b></th><th><b>علي</b></th></tr>" in rich.html
     assert "<td>○ يرسل 1 رسالة نصية<br><b>11 XP</b></td>" in rich.html
-    assert "<td>○ يرسل 1 صورة<br><b>16 XP</b></td>" in rich.html
+    assert "<td>○ يرسل 1 صورة<br><b>17 XP</b></td>" in rich.html
     assert '<td colspan="2" align="center"><b>مهمة مشتركة</b><br>' in rich.html
     assert "حسين وعلي: ترسلون 2 رسالة بالمجموع" in rich.html
 
