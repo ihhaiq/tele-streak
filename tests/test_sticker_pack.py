@@ -33,15 +33,33 @@ def test_special_stickers_exist():
 
 
 def test_sticker_set_name_is_deterministic():
-    assert sticker_set_name("MyStreakBot") == "jake_streak_shared_v2_1_by_mystreakbot"
+    assert sticker_set_name("MyStreakBot") == "jake_streak_shared_v3_1_by_mystreakbot"
 
 
 def test_sticker_set_name_removes_invalid_characters():
-    assert sticker_set_name("My-Streak.Bot") == "jake_streak_shared_v2_1_by_mystreakbot"
+    assert sticker_set_name("My-Streak.Bot") == "jake_streak_shared_v3_1_by_mystreakbot"
 
 
 def test_sticker_set_name_respects_telegram_limit():
     assert sticker_set_name("a" * 32, 3).endswith("_by_" + "a" * 32)
+
+
+def test_pack_builder_force_rebuild_replaces_damaged_ready_asset(tmp_path):
+    sheet = Image.new("RGBA", (1374, 1145), (255, 220, 0, 255))
+    sheet_path = tmp_path / "sheet.webp"
+    sheet.save(sheet_path, "WEBP")
+    ready = tmp_path / "ready"
+    ready.mkdir()
+    damaged = ready / "017.webp"
+    Image.new("RGBA", (512, 512), (255, 0, 0, 255)).save(damaged, "WEBP")
+    before = damaged.read_bytes()
+
+    ReadyPackBuilder(sheet_path, ready).ensure(17, 17, force=True)
+
+    assert damaged.read_bytes() != before
+    with Image.open(damaged) as sticker:
+        assert sticker.size == (512, 512)
+        assert sticker.format == "WEBP"
 
 
 def test_pack_builder_creates_numbered_webp(tmp_path):

@@ -45,11 +45,11 @@ class ReadyPackBuilder:
         self.sheet_path = sheet_path
         self.ready_dir = ready_dir
 
-    def ensure(self, start: int = 61, end: int = 250) -> None:
+    def ensure(self, start: int = 61, end: int = 250, *, force: bool = False) -> None:
         self.ready_dir.mkdir(parents=True, exist_ok=True)
         missing = [
             day for day in range(start, end + 1)
-            if not (self.ready_dir / f"{day:03}.webp").is_file()
+            if force or not (self.ready_dir / f"{day:03}.webp").is_file()
         ]
         if not missing:
             return

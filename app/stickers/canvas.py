@@ -3,9 +3,9 @@ from __future__ import annotations
 from PIL import Image, ImageFilter
 
 CANVAS_SIZE = 512
-# Keep a small safety area. 4% still makes the artwork visibly larger while
-# protecting heads/feet and soft outlines from Telegram's visual crop.
-MARGIN_RATIO = 0.04
+# Keep a small, consistent safety area while letting the artwork fill more of
+# Telegram's 512px sticker canvas.
+MARGIN_RATIO = 0.03
 ALPHA_FLOOR = 18
 # A very light close joins tiny gaps in outlines without eroding real artwork.
 CLOSE_WINDOW = 3

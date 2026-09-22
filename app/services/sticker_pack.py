@@ -17,7 +17,7 @@ from app.stickers.pack_builder import ReadyPackBuilder
 
 logger = logging.getLogger(__name__)
 PACK_SIZE = 120
-PACK_ASSET_VERSION = 2
+PACK_ASSET_VERSION = 3
 MAX_ATTEMPTS = 5
 UPLOAD_PAUSE_SECONDS = 0.75
 PART_PAUSE_SECONDS = 1.5
@@ -48,6 +48,7 @@ class StickerPack:
         self._lock = asyncio.Lock()
         self._file_ids: dict[str, str] = {}
         self._sync_task: asyncio.Task[None] | None = None
+        self._repaired_17 = False
         sheet = ready_dir.parents[2] / "jake" / "generated" / "poses_sheet.webp"
         self.builder = ReadyPackBuilder(sheet, ready_dir)
         self.normalized_dir = ready_dir.parent / f"normalized-v{PACK_ASSET_VERSION}"
@@ -70,11 +71,23 @@ class StickerPack:
             )
         return output
 
+    def normalized_numbered_path(self, days: int) -> Path:
+        if days == 17 and not self._repaired_17:
+            self.builder.ensure(17, 17, force=True)
+            self._repaired_17 = True
+        return self._normalize_asset(str(days), self.ready_dir / f"{days:03}.webp")
+
+    def normalized_special_path(self, name: str) -> Path:
+        return self._normalize_asset(
+            name,
+            self.ready_dir.parent / "special" / f"{name}.webp",
+        )
+
     def _assets(self) -> list[PackAsset]:
         numbered = [
             PackAsset(
                 str(day),
-                self._normalize_asset(str(day), self.ready_dir / f"{day:03}.webp"),
+                self.normalized_numbered_path(day),
                 "🔥",
             )
             for day in range(1, 251)
@@ -83,12 +96,12 @@ class StickerPack:
         return numbered + [
             PackAsset(
                 "warning",
-                self._normalize_asset("warning", special / "warning.webp"),
+                self.normalized_special_path("warning"),
                 "⏰",
             ),
             PackAsset(
                 "broken",
-                self._normalize_asset("broken", special / "broken.webp"),
+                self.normalized_special_path("broken"),
                 "💔",
             ),
         ]
