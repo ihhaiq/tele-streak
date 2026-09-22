@@ -23,7 +23,7 @@ from app.services.rich_status import (
     build_streak_fallback_text,
     build_streak_rich_message,
 )
-from app.services.sticker_pack import StickerPack
+from app.services.sticker_pack import PACK_ASSET_VERSION, StickerPack
 from app.services.streak_messages import (
     BROKEN_NOTICE_TEXT,
     build_broken_notice_rich_message,
@@ -32,6 +32,14 @@ from app.streak_modes import MODE_MESSAGE
 
 logger = logging.getLogger(__name__)
 MAX_SEND_ATTEMPTS = 3
+
+
+def sticker_cache_key(days: int) -> str:
+    return f"streak:v{PACK_ASSET_VERSION}:{days}"
+
+
+def special_sticker_cache_key(name: str) -> str:
+    return f"special:v{PACK_ASSET_VERSION}:{name}"
 
 
 class Renderer(Protocol):
@@ -318,7 +326,7 @@ class StickerService:
         connection_id = await self._active_connection(connection_id)
         if name not in {"warning", "broken"}:
             raise ValueError("unknown special sticker")
-        sticker_key = f"special:{name}"
+        sticker_key = special_sticker_cache_key(name)
         reply_markup = (
             revive_streak_keyboard()
             if name == "broken" and revive_available
@@ -358,7 +366,7 @@ class StickerService:
                 )
 
         if sent is None:
-            path = self.ready_stickers_dir.parent / "special" / f"{name}.webp"
+            path = self.pack.normalized_special_path(name)
             sent = await self._send_sticker(
                 connection_id=connection_id,
                 chat_id=chat_id,
@@ -406,7 +414,7 @@ class StickerService:
         if days < 1:
             raise ValueError("days must be positive")
 
-        sticker_key = f"streak:{days}"
+        sticker_key = sticker_cache_key(days)
         sent: Message | None = None
 
         pack_file_id = self.pack.cached_file_id(str(days))
@@ -432,8 +440,9 @@ class StickerService:
                 await self.repository.delete_sticker_file_id(sticker_key)
 
         if sent is None and 1 <= days <= 250:
-            path = self.ready_stickers_dir / f"{days:03}.webp"
-            if path.is_file():
+            source = self.ready_stickers_dir / f"{days:03}.webp"
+            if source.is_file():
+                path = self.pack.normalized_numbered_path(days)
                 sent = await self._send_channel_sticker(
                     chat_id=chat_id,
                     sticker=FSInputFile(path),
@@ -477,7 +486,7 @@ class StickerService:
         else:
             self.pack.start_sync(connection_id)
 
-        sticker_key = f"streak:{days}"
+        sticker_key = sticker_cache_key(days)
         cached_file_id = await self.repository.get_sticker_file_id(sticker_key)
         if sent is None and cached_file_id:
             try:
@@ -497,11 +506,16 @@ class StickerService:
                 )
 
         if sent is None:
-            path = resolve_sticker_path(
-                self.ready_stickers_dir,
-                self.renderer,
-                pose,
-                days,
+            source = self.ready_stickers_dir / f"{days:03}.webp"
+            path = (
+                self.pack.normalized_numbered_path(days)
+                if 1 <= days <= 250 and source.is_file()
+                else resolve_sticker_path(
+                    self.ready_stickers_dir,
+                    self.renderer,
+                    pose,
+                    days,
+                )
             )
             sent = await self._send_sticker(
                 connection_id=connection_id,
