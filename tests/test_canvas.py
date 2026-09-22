@@ -25,7 +25,7 @@ def test_fit_to_canvas_is_large_but_keeps_safety_margin():
     assert fitted.size == (CANVAS_SIZE, CANVAS_SIZE)
     box = fitted.getbbox()
     longest = max(box[2] - box[0], box[3] - box[1])
-    assert CANVAS_SIZE * 0.84 <= longest <= CANVAS_SIZE * 0.94
+    assert CANVAS_SIZE * 0.88 <= longest <= CANVAS_SIZE * 0.96
 
 
 def test_fit_to_canvas_centers_visible_artwork():
