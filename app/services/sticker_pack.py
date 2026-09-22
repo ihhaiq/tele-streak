@@ -48,6 +48,7 @@ class StickerPack:
         self._lock = asyncio.Lock()
         self._file_ids: dict[str, str] = {}
         self._sync_task: asyncio.Task[None] | None = None
+        self._repaired_17 = False
         sheet = ready_dir.parents[2] / "jake" / "generated" / "poses_sheet.webp"
         self.builder = ReadyPackBuilder(sheet, ready_dir)
         self.normalized_dir = ready_dir.parent / f"normalized-v{PACK_ASSET_VERSION}"
@@ -71,6 +72,9 @@ class StickerPack:
         return output
 
     def normalized_numbered_path(self, days: int) -> Path:
+        if days == 17 and not self._repaired_17:
+            self.builder.ensure(17, 17, force=True)
+            self._repaired_17 = True
         return self._normalize_asset(str(days), self.ready_dir / f"{days:03}.webp")
 
     def normalized_special_path(self, name: str) -> Path:
@@ -136,10 +140,6 @@ class StickerPack:
             # Image generation + normalization is CPU/disk heavy. Keep it off
             # the bot event loop so commands such as "ستريك" remain responsive.
             await asyncio.to_thread(self.builder.ensure)
-            # 017 in the reviewed 1-60 set had a clipped/corrupted crop.
-            # Rebuild it from the pose sheet before normalization so every
-            # upload path receives the repaired artwork.
-            await asyncio.to_thread(self.builder.ensure, 17, 17, force=True)
             assets = await asyncio.to_thread(self._assets)
             if any(not asset.path.is_file() for asset in assets):
                 raise RuntimeError("sticker pack has missing assets")
