@@ -386,7 +386,8 @@ def test_tasks_page_explains_combo_in_plain_iraqi():
     daily = make_day("2026-09-20", profile, 12, random.Random(8))
     rich = rich_page(profile, daily, "tasks", 10, 20)
 
-    assert "<table compact>" in rich.html
+    assert "<table bordered>" in rich.html
+    assert "<table compact>" not in rich.html
     assert "<th><b>الطرف الأول</b></th><th><b>الطرف الثاني</b></th>" in rich.html
     assert "<th>المهمة</th><th>XP</th>" not in rich.html
     assert "تتجدد كل 6 ساعات" in rich.html
