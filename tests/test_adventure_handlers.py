@@ -388,7 +388,7 @@ def test_tasks_page_explains_combo_in_plain_iraqi():
 
     assert "<table bordered>" in rich.html
     assert "<table compact>" not in rich.html
-    assert "<th><b>الطرف الأول</b></th><th><b>الطرف الثاني</b></th>" in rich.html
+    assert '<th align="center"><b>الطرف الأول</b></th><th align="center"><b>الطرف الثاني</b></th>' in rich.html
     assert "<th>المهمة</th><th>XP</th>" not in rich.html
     assert "تتجدد كل 6 ساعات" in rich.html
     assert "الـCombo يعني شكد يوم ورا بعض" in rich.html

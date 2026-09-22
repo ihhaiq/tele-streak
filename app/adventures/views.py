@@ -319,8 +319,8 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
         peer_cell = peer_cells[index] if index < len(peer_cells) else ""
         rows.append(
             "<tr>"
-            f"<td>{owner_cell}</td>"
-            f"<td>{peer_cell}</td>"
+            f"<td align=\"center\">{owner_cell}</td>"
+            f"<td align=\"center\">{peer_cell}</td>"
             "</tr>"
         )
     rows.extend(shared_rows)
@@ -339,7 +339,8 @@ def _rich_tasks(profile: Profile, state: dict, owner: int, chat: int) -> InputRi
             f"{current}/{needed} XP · الإجمالي <b>{profile.shared_xp}</b></p>"
             + event
             + "<table bordered>"
-            f"<tr><th><b>{escape(owner_name)}</b></th><th><b>{escape(peer_name)}</b></th></tr>"
+            f"<tr><th align=\"center\"><b>{escape(owner_name)}</b></th>"
+            f"<th align=\"center\"><b>{escape(peer_name)}</b></th></tr>"
             + "".join(rows)
             + "</table>"
             f"<footer>إكمال الـ6: +{bonus} XP · تتجدد كل 6 ساعات</footer>"
