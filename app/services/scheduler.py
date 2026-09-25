@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.services.rich_status import participation_text
 from app.database.repository import Repository
+from app.database.channel_repository import ChannelStreakRepository
 from app.services.guest_delivery import GuestDeliveryService
 from app.services.sticker_service import StickerService
 
@@ -24,12 +25,16 @@ class StreakScheduler:
         stickers: StickerService,
         guests: GuestDeliveryService,
         *,
+        channel_repository: ChannelStreakRepository | None = None,
+        channel_timezone_name: str = "Asia/Baghdad",
         interval_seconds: int = 300,
         warning_hour: int = 22,
     ):
         self.repository = repository
         self.stickers = stickers
         self.guests = guests
+        self.channel_repository = channel_repository
+        self.channel_timezone_name = channel_timezone_name
         self.interval_seconds = interval_seconds
         self.warning_hour = warning_hour
 
@@ -156,4 +161,66 @@ class StreakScheduler:
                         yesterday,
                     )
 
+        await self._run_channel_streaks()
         await self.repository.cleanup_processed_messages()
+
+    async def _run_channel_streaks(self) -> None:
+        if self.channel_repository is None:
+            return
+        try:
+            timezone = ZoneInfo(self.channel_timezone_name)
+        except ZoneInfoNotFoundError:
+            logger.error(
+                "INVALID_CHANNEL_TIMEZONE timezone=%s",
+                self.channel_timezone_name,
+            )
+            return
+
+        local_now = datetime.now(timezone)
+        today_date = local_now.date()
+        today = today_date.isoformat()
+        yesterday = (today_date - timedelta(days=1)).isoformat()
+
+        for streak in await self.channel_repository.list_monitorable():
+            try:
+                if (
+                    streak.last_completed_day is not None
+                    and streak.last_completed_day < yesterday
+                ):
+                    broken = await self.channel_repository.process_missed_day(
+                        streak.channel_id,
+                        today=today,
+                        missed_day=yesterday,
+                    )
+                    if broken:
+                        await self.stickers.send_channel_broken_notice(
+                            chat_id=streak.channel_id,
+                        )
+                        logger.info(
+                            "CHANNEL_STREAK_BROKEN chat=%s",
+                            streak.channel_id,
+                        )
+                    continue
+
+                if (
+                    local_now.hour >= self.warning_hour
+                    and streak.last_completed_day != today
+                    and streak.last_warning_day != today
+                ):
+                    claimed = await self.channel_repository.claim_warning(
+                        streak.channel_id,
+                        today,
+                    )
+                    if claimed:
+                        await self.stickers.send_channel_warning_notice(
+                            chat_id=streak.channel_id,
+                        )
+                        logger.info(
+                            "CHANNEL_STREAK_WARNING_SENT chat=%s",
+                            streak.channel_id,
+                        )
+            except Exception:
+                logger.exception(
+                    "CHANNEL_STREAK_SCHEDULER_FAILED chat=%s",
+                    streak.channel_id,
+                )
