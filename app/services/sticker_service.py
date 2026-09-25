@@ -26,7 +26,10 @@ from app.services.rich_status import (
 from app.services.sticker_pack import PACK_ASSET_VERSION, StickerPack
 from app.services.streak_messages import (
     BROKEN_NOTICE_TEXT,
+    BROKEN_NOTICE_TITLE,
+    PERMANENT_BROKEN_NOTICE_PARAGRAPHS,
     build_broken_notice_rich_message,
+    build_permanent_broken_notice_rich_message,
 )
 from app.streak_modes import MODE_MESSAGE
 
@@ -404,6 +407,31 @@ class StickerService:
                     raise
                 await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
         raise RuntimeError("unreachable channel sticker retry state")
+
+    async def send_channel_warning_notice(self, *, chat_id: int) -> None:
+        await self.bot.send_message(
+            chat_id=chat_id,
+            text="⏰ بقي أقل من ساعتين وينتهي وقت ستريك اليوم. نزّلوا منشور قبل نهاية اليوم.",
+        )
+
+    async def send_channel_broken_notice(self, *, chat_id: int) -> None:
+        reason = "ما نزل منشور القناة ضمن يوم الستريك، ولهذا انتهى الستريك."
+        try:
+            await self.bot.send_rich_message(
+                chat_id=chat_id,
+                rich_message=build_permanent_broken_notice_rich_message(reason=reason),
+            )
+        except TelegramBadRequest:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    BROKEN_NOTICE_TITLE
+                    + "\n\n"
+                    + reason
+                    + "\n\n"
+                    + PERMANENT_BROKEN_NOTICE_PARAGRAPHS[1]
+                ),
+            )
 
     async def send_channel_success(
         self,
