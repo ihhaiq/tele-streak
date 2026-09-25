@@ -16,6 +16,8 @@ class ChannelStreak:
     last_completed_day: str | None
     last_completed_by: str | None
     is_enabled: bool
+    last_warning_day: str | None = None
+    last_broken_day: str | None = None
     last_completed_by_user_id: int | None = None
 
 
@@ -36,6 +38,7 @@ class ChannelStreakRepository:
             longest_streak=int(row["longest_streak"]), completed_days=int(row["completed_days"]),
             break_count=int(row["break_count"]), last_completed_day=row["last_completed_day"],
             last_completed_by=row["last_completed_by"], is_enabled=bool(row["is_enabled"]),
+            last_warning_day=row["last_warning_day"], last_broken_day=row["last_broken_day"],
             last_completed_by_user_id=row["last_completed_by_user_id"],
         )
 
@@ -65,6 +68,72 @@ class ChannelStreakRepository:
             )
             await db.commit()
 
+    async def list_monitorable(self) -> list[ChannelStreak]:
+        async with self.database.connect() as db:
+            rows = await (
+                await db.execute(
+                    """SELECT * FROM channel_streaks
+                    WHERE is_enabled=1 AND current_streak>0"""
+                )
+            ).fetchall()
+            return [self._record(row) for row in rows if row is not None]
+
+    async def claim_warning(self, channel_id: int, day: str) -> bool:
+        async with self.database.connect() as db:
+            result = await db.execute(
+                """UPDATE channel_streaks
+                SET last_warning_day=?, updated_at=?
+                WHERE channel_id=? AND is_enabled=1 AND current_streak>0
+                  AND (last_completed_day IS NULL OR last_completed_day<>?)
+                  AND (last_warning_day IS NULL OR last_warning_day<>?)""",
+                (day, self._now(), channel_id, day, day),
+            )
+            claimed = result.rowcount == 1
+            if claimed:
+                await db.commit()
+            else:
+                await db.rollback()
+            return claimed
+
+    async def process_missed_day(
+        self,
+        channel_id: int,
+        *,
+        today: str,
+        missed_day: str,
+    ) -> bool:
+        async with self.database.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await (
+                await db.execute(
+                    """SELECT current_streak, last_completed_day, last_broken_day
+                    FROM channel_streaks
+                    WHERE channel_id=? AND is_enabled=1""",
+                    (channel_id,),
+                )
+            ).fetchone()
+            if (
+                row is None
+                or int(row["current_streak"]) <= 0
+                or row["last_completed_day"] is None
+                or str(row["last_completed_day"]) >= missed_day
+                or row["last_broken_day"] == today
+            ):
+                await db.rollback()
+                return False
+
+            await db.execute(
+                """UPDATE channel_streaks SET
+                    current_streak=0,
+                    break_count=break_count+1,
+                    last_broken_day=?,
+                    updated_at=?
+                WHERE channel_id=?""",
+                (today, self._now(), channel_id),
+            )
+            await db.commit()
+            return True
+
     async def record_post(
         self, channel_id: int, day: str, author: str, author_user_id: int | None = None,
     ) -> tuple[ChannelStreak | None, bool]:
@@ -81,8 +150,9 @@ class ChannelStreakRepository:
             previous = row["last_completed_day"]
             current = int(row["current_streak"])
             yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
-            broken = bool(previous and previous != yesterday)
-            current = 1 if broken else current + 1
+            consecutive = previous == yesterday
+            broken = bool(current > 0 and previous and not consecutive)
+            current = current + 1 if consecutive else 1
             await db.execute(
                 """UPDATE channel_streaks SET current_streak=?, longest_streak=MAX(longest_streak,?),
                 completed_days=completed_days+1, break_count=?, last_completed_day=?, last_completed_by=?,
