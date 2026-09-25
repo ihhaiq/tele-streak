@@ -67,6 +67,7 @@ async def test_channel_completion_sends_only_numbered_sticker():
     streaks.register_post.return_value = (
         SimpleNamespace(current_streak=1),
         True,
+        False,
     )
     await handler(post)
     stickers.send_channel_success.assert_awaited_once_with(
@@ -77,6 +78,7 @@ async def test_channel_completion_sends_only_numbered_sticker():
     streaks.register_post.return_value = (
         SimpleNamespace(current_streak=2),
         True,
+        False,
     )
     await handler(post)
     stickers.send_channel_success.assert_awaited_once_with(
@@ -94,7 +96,7 @@ async def test_channel_duplicate_post_sends_no_sticker():
     streaks = SimpleNamespace(
         timezone=SimpleNamespace(key="UTC"),
         register_post=AsyncMock(
-            return_value=(SimpleNamespace(current_streak=4), False)
+            return_value=(SimpleNamespace(current_streak=4), False, False)
         ),
     )
     stickers = SimpleNamespace(
@@ -160,8 +162,8 @@ async def test_channel_bot_post_is_ignored(tmp_path, bot, own_id):
         repo = ChannelStreakRepository(db)
         service = ChannelStreakService(repo, "UTC", bot_user_id=own_id)
         await repo.activate(77)
-        result, completed = await service.register_post(message(bot=bot))
-        assert result is None and not completed
+        result, completed, broken = await service.register_post(message(bot=bot))
+        assert result is None and not completed and not broken
         assert (await repo.get(77)).completed_days == 0
     finally:
         await db.close()
@@ -175,15 +177,44 @@ async def test_channel_service_saves_known_author_and_anonymous_signature(tmp_pa
         repo = ChannelStreakRepository(db)
         service = ChannelStreakService(repo, "UTC")
         await repo.activate(77)
-        result, completed = await service.register_post(message())
-        assert completed and result.last_completed_by_user_id == 7
+        result, completed, broken = await service.register_post(message())
+        assert completed and not broken and result.last_completed_by_user_id == 7
         anonymous = message(author="توقيع المشرف")
         anonymous.chat.id = 78
         anonymous.from_user = None
         await repo.activate(78)
-        result, completed = await service.register_post(anonymous)
-        assert completed and result.last_completed_by == "توقيع المشرف"
+        result, completed, broken = await service.register_post(anonymous)
+        assert completed and not broken and result.last_completed_by == "توقيع المشرف"
         assert result.last_completed_by_user_id is None
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_channel_post_after_missed_day_reports_break_before_restart(tmp_path, monkeypatch):
+    db = Database(tmp_path / "db.sqlite")
+    await db.init()
+    try:
+        repo = ChannelStreakRepository(db)
+        service = ChannelStreakService(repo, "UTC")
+        await repo.activate(77)
+        await repo.record_post(77, "2026-09-20", "حسين", 7)
+
+        class FixedDateTime:
+            @classmethod
+            def now(cls, _timezone):
+                from datetime import datetime as real_datetime
+                return real_datetime.fromisoformat("2026-09-22T10:00:00+00:00")
+
+        monkeypatch.setattr(
+            "app.services.channel_streak_service.datetime",
+            FixedDateTime,
+        )
+        restarted, completed, broken = await service.register_post(message())
+
+        assert completed and broken
+        assert restarted.current_streak == 1
+        assert restarted.break_count == 1
     finally:
         await db.close()
 
@@ -239,3 +270,49 @@ def test_channel_status_does_not_call_yesterdays_post_today(monkeypatch):
     streak.last_completed_day = "2026-09-20"
     text = channel_status_text(streak)
     assert "أكمل منشور اليوم" not in text and "⏳ بانتظار منشور اليوم" in text
+
+
+@pytest.mark.asyncio
+async def test_channel_warning_and_expiry_are_persisted_once(tmp_path):
+    db = Database(tmp_path / "db.sqlite")
+    await db.init()
+    try:
+        repo = ChannelStreakRepository(db)
+        await repo.activate(77)
+        streak, completed = await repo.record_post(
+            77, "2026-09-20", "حسين", 7
+        )
+        assert completed and streak.current_streak == 1
+
+        monitorable = await repo.list_monitorable()
+        assert [item.channel_id for item in monitorable] == [77]
+
+        assert await repo.claim_warning(77, "2026-09-21")
+        assert not await repo.claim_warning(77, "2026-09-21")
+        warned = await repo.get(77)
+        assert warned.last_warning_day == "2026-09-21"
+
+        assert await repo.process_missed_day(
+            77,
+            today="2026-09-22",
+            missed_day="2026-09-21",
+        )
+        assert not await repo.process_missed_day(
+            77,
+            today="2026-09-22",
+            missed_day="2026-09-21",
+        )
+
+        broken = await repo.get(77)
+        assert broken.current_streak == 0
+        assert broken.break_count == 1
+        assert broken.last_broken_day == "2026-09-22"
+
+        restarted, completed = await repo.record_post(
+            77, "2026-09-22", "حسين", 7
+        )
+        assert completed
+        assert restarted.current_streak == 1
+        assert restarted.break_count == 1
+    finally:
+        await db.close()

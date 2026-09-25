@@ -31,11 +31,19 @@ class FakeStickers:
     def __init__(self):
         self.special = []
         self.notices = []
+        self.channel_warnings = []
+        self.channel_broken = []
     async def send_special(self, **kwargs):
         self.special.append(kwargs)
 
     async def send_notice_text(self, **kwargs):
         self.notices.append(kwargs)
+
+    async def send_channel_warning_notice(self, **kwargs):
+        self.channel_warnings.append(kwargs)
+
+    async def send_channel_broken_notice(self, **kwargs):
+        self.channel_broken.append(kwargs)
 
 
 class TransportFailure:
@@ -190,3 +198,92 @@ def test_scheduler_does_not_fallback_after_business_transport_failure():
     assert [event["event"] for event in guests.events] == ["warning_sticker"]
     assert stickers.special == []
     assert stickers.notices == []
+
+
+
+class FakeChannelRepository:
+    def __init__(self, streaks):
+        self.streaks = streaks
+        self.warning_claims = []
+        self.break_calls = []
+
+    async def list_monitorable(self):
+        return self.streaks
+
+    async def claim_warning(self, channel_id, day):
+        self.warning_claims.append((channel_id, day))
+        return True
+
+    async def process_missed_day(self, channel_id, **kwargs):
+        self.break_calls.append((channel_id, kwargs))
+        return True
+
+
+def _quiet_private_streak(today):
+    return StreakRecord(
+        business_connection_id="bc-1", chat_id=20, peer_user_id=30, streak_mode="message",
+        current_streak=1, longest_streak=1, completed_days=1,
+        break_count=0, last_completed_day=today,
+        owner_sent_day=today, peer_sent_day=today,
+        last_pose="pose", last_success_message_id=None,
+        last_warning_day=today, last_broken_day=None,
+        notifications_enabled=True, is_enabled=True,
+        freeze_count=1, auto_freeze=True, freezes_used=0,
+        created_at="2026-09-01", updated_at="2026-09-16",
+    )
+
+
+def test_scheduler_sends_channel_warning_once_claimed():
+    today = datetime.now(timezone.utc).date().isoformat()
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    private = _quiet_private_streak(today)
+    channel = type("Channel", (), {
+        "channel_id": 77,
+        "last_completed_day": yesterday,
+        "last_warning_day": None,
+    })()
+    channels = FakeChannelRepository([channel])
+    stickers = FakeStickers()
+    scheduler = StreakScheduler(
+        FakeRepository(private),
+        stickers,
+        FakeGuests(),
+        channel_repository=channels,
+        channel_timezone_name="UTC",
+        warning_hour=0,
+    )
+
+    asyncio.run(scheduler.run_once())
+
+    assert channels.warning_claims == [(77, today)]
+    assert stickers.channel_warnings == [{"chat_id": 77}]
+    assert channels.break_calls == []
+
+
+def test_scheduler_breaks_expired_channel_and_sends_death_notice():
+    today_date = datetime.now(timezone.utc).date()
+    today = today_date.isoformat()
+    old_day = (today_date - timedelta(days=2)).isoformat()
+    private = _quiet_private_streak(today)
+    channel = type("Channel", (), {
+        "channel_id": 77,
+        "last_completed_day": old_day,
+        "last_warning_day": None,
+    })()
+    channels = FakeChannelRepository([channel])
+    stickers = FakeStickers()
+    scheduler = StreakScheduler(
+        FakeRepository(private),
+        stickers,
+        FakeGuests(),
+        channel_repository=channels,
+        channel_timezone_name="UTC",
+        warning_hour=24,
+    )
+
+    asyncio.run(scheduler.run_once())
+
+    assert len(channels.break_calls) == 1
+    assert channels.break_calls[0][0] == 77
+    assert stickers.channel_broken == [{"chat_id": 77}]
+    assert stickers.channel_warnings == []

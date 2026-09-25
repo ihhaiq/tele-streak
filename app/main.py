@@ -94,7 +94,13 @@ async def main() -> None:
     dp.include_router(callbacks_router(repository, activations, streaks))
     dp.include_router(private_router(repository, stickers))
 
-    scheduler = StreakScheduler(repository, stickers, guests)
+    scheduler = StreakScheduler(
+        repository,
+        stickers,
+        guests,
+        channel_repository=channel_repository,
+        channel_timezone_name=settings.timezone,
+    )
     scheduler_task = asyncio.create_task(
         scheduler.run_forever(),
         name="streak-scheduler",

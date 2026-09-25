@@ -42,7 +42,16 @@ def build_router(
                     )
             await message.answer(channel_status_text(streak, streaks.timezone.key))
             return
-        streak, completed = await streaks.register_post(message)
+        streak, completed, broken = await streaks.register_post(message)
+        if broken:
+            try:
+                await stickers.send_channel_broken_notice(chat_id=message.chat.id)
+            except Exception:
+                logger.exception(
+                    "CHANNEL_STREAK_BROKEN_NOTICE_FAILED chat=%s",
+                    message.chat.id,
+                )
+
         if not completed or streak is None:
             return
 
