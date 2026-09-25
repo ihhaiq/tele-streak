@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS channel_streaks (
     last_completed_day TEXT,
     last_completed_by TEXT,
     last_completed_by_user_id INTEGER,
+    last_warning_day TEXT,
+    last_broken_day TEXT,
     is_enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -198,6 +200,8 @@ MIGRATIONS = (
     "ALTER TABLE streaks ADD COLUMN last_contributor_name TEXT",
     "ALTER TABLE streaks ADD COLUMN last_contribution_day TEXT",
     "ALTER TABLE channel_streaks ADD COLUMN last_completed_by_user_id INTEGER",
+    "ALTER TABLE channel_streaks ADD COLUMN last_warning_day TEXT",
+    "ALTER TABLE channel_streaks ADD COLUMN last_broken_day TEXT",
     "ALTER TABLE story_publish_requests ADD COLUMN music_file_id TEXT",
     "ALTER TABLE story_publish_requests ADD COLUMN music_uploader_id INTEGER",
     "ALTER TABLE business_connections ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Baghdad'",
