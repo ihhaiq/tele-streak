@@ -239,3 +239,49 @@ def test_channel_status_does_not_call_yesterdays_post_today(monkeypatch):
     streak.last_completed_day = "2026-09-20"
     text = channel_status_text(streak)
     assert "أكمل منشور اليوم" not in text and "⏳ بانتظار منشور اليوم" in text
+
+
+@pytest.mark.asyncio
+async def test_channel_warning_and_expiry_are_persisted_once(tmp_path):
+    db = Database(tmp_path / "db.sqlite")
+    await db.init()
+    try:
+        repo = ChannelStreakRepository(db)
+        await repo.activate(77)
+        streak, completed = await repo.record_post(
+            77, "2026-09-20", "حسين", 7
+        )
+        assert completed and streak.current_streak == 1
+
+        monitorable = await repo.list_monitorable()
+        assert [item.channel_id for item in monitorable] == [77]
+
+        assert await repo.claim_warning(77, "2026-09-21")
+        assert not await repo.claim_warning(77, "2026-09-21")
+        warned = await repo.get(77)
+        assert warned.last_warning_day == "2026-09-21"
+
+        assert await repo.process_missed_day(
+            77,
+            today="2026-09-22",
+            missed_day="2026-09-21",
+        )
+        assert not await repo.process_missed_day(
+            77,
+            today="2026-09-22",
+            missed_day="2026-09-21",
+        )
+
+        broken = await repo.get(77)
+        assert broken.current_streak == 0
+        assert broken.break_count == 1
+        assert broken.last_broken_day == "2026-09-22"
+
+        restarted, completed = await repo.record_post(
+            77, "2026-09-22", "حسين", 7
+        )
+        assert completed
+        assert restarted.current_streak == 1
+        assert restarted.break_count == 1
+    finally:
+        await db.close()
